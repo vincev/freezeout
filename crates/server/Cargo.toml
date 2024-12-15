@@ -1,0 +1,14 @@
+[package]
+authors = ["Vince Vasta <vince.vasta@gmail.com>"]
+description = "Freezeout Poker server."
+edition = "2021"
+license = "Apache-2.0"
+name = "freezeout-server"
+version = "0.1.0"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+tokio = { version = "1.42.0", features=["full"] }

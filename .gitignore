@@ -1,0 +1,5 @@
+# Rust builds
+/target
+
+# Trunk builds
+dist/
