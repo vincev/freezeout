@@ -10,5 +10,9 @@ version = "0.1.0"
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
+freezeout-core = { path = "../core" }
+futures-util = { version = "0.3.31", default-features = false, features = ["sink"] }
 log = { workspace = true }
+snow = "0.9.6"
 tokio = { version = "1.42.0", features=["full"] }
+tokio-tungstenite = "0.25.0"

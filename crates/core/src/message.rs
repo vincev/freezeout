@@ -12,6 +12,8 @@ use crate::crypto::{PlayerId, Signature, SigningKey, VerifyingKey};
 pub enum Message {
     /// Join a table with a nickname.
     JoinTable(String),
+    /// An error message.
+    Error(String),
 }
 
 /// A signed message.
