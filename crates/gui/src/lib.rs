@@ -6,3 +6,5 @@
 
 pub mod gui;
 pub use gui::{App, Config};
+
+pub mod connection;
