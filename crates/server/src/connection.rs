@@ -21,6 +21,53 @@ static NOISE_PARAMS: LazyLock<NoiseParams> =
 /// Maximum message length.
 const MAX_MSG_LEN: usize = 16384;
 
+/// A noise protocol encrypted WebSocket connection for [SignedMessage].
+pub struct EncryptedConnection {
+    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    transport: TransportState,
+}
+
+impl EncryptedConnection {
+    /// Creates a new connection.
+    fn new(stream: WebSocketStream<MaybeTlsStream<TcpStream>>, transport: TransportState) -> Self {
+        Self { stream, transport }
+    }
+
+    /// Sends a [SignedMessage].
+    pub async fn send(&mut self, msg: &SignedMessage) -> Result<()> {
+        let mut buf = [0u8; MAX_MSG_LEN];
+        let len = self.transport.write_message(&msg.serialize(), &mut buf)?;
+        self.stream.send(WsMessage::binary(&buf[..len])).await?;
+
+        Ok(())
+    }
+
+    /// Waits for a [SignedMessage].
+    pub async fn recv(&mut self) -> Option<Result<SignedMessage>> {
+        let mut buf = [0u8; MAX_MSG_LEN];
+        loop {
+            match self.stream.next().await {
+                Some(Ok(WsMessage::Binary(payload))) => {
+                    break Some(
+                        self.transport
+                            .read_message(payload.as_slice(), &mut buf)
+                            .map_err(anyhow::Error::from)
+                            .and_then(|len| SignedMessage::deserialize_and_verify(&buf[..len])),
+                    );
+                }
+                Some(Ok(_)) => continue,
+                Some(Err(e)) => break Some(Err(anyhow!("Connection error: {e}"))),
+                None => break None,
+            }
+        }
+    }
+
+    /// Closes this connection.
+    pub async fn close(&mut self) {
+        let _ = self.stream.close(None).await;
+    }
+}
+
 /// Creates an [EncryptedConnection] from a server stream.
 pub async fn accept_async(stream: TcpStream) -> Result<EncryptedConnection> {
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MSG_LEN));
@@ -88,53 +135,6 @@ pub async fn connect_async(addr: &str) -> Result<EncryptedConnection> {
     let transport = noise.into_transport_mode()?;
 
     Ok(EncryptedConnection::new(stream, transport))
-}
-
-/// A noise protocol encrypted WebSocket connection for [SignedMessage].
-pub struct EncryptedConnection {
-    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    transport: TransportState,
-}
-
-impl EncryptedConnection {
-    /// Creates a new connection.
-    fn new(stream: WebSocketStream<MaybeTlsStream<TcpStream>>, transport: TransportState) -> Self {
-        Self { stream, transport }
-    }
-
-    /// Sends a [SignedMessage].
-    pub async fn send(&mut self, msg: &SignedMessage) -> Result<()> {
-        let mut buf = [0u8; MAX_MSG_LEN];
-        let len = self.transport.write_message(&msg.serialize(), &mut buf)?;
-        self.stream.send(WsMessage::binary(&buf[..len])).await?;
-
-        Ok(())
-    }
-
-    /// Waits for a [SignedMessage].
-    pub async fn recv(&mut self) -> Option<Result<SignedMessage>> {
-        let mut buf = [0u8; MAX_MSG_LEN];
-        loop {
-            match self.stream.next().await {
-                Some(Ok(WsMessage::Binary(payload))) => {
-                    break Some(
-                        self.transport
-                            .read_message(payload.as_slice(), &mut buf)
-                            .map_err(anyhow::Error::from)
-                            .and_then(|len| SignedMessage::deserialize_and_verify(&buf[..len])),
-                    );
-                }
-                Some(Ok(_)) => continue,
-                Some(Err(e)) => break Some(Err(anyhow!("Connection error: {e}"))),
-                None => break None,
-            }
-        }
-    }
-
-    /// Closes this connection.
-    pub async fn close(&mut self) {
-        let _ = self.stream.close(None).await;
-    }
 }
 
 #[cfg(test)]

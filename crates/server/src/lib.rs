@@ -4,7 +4,9 @@
 //! Freezeout Poker server.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 
+pub mod connection;
+
 pub mod server;
 pub use server::{run, Config};
 
-pub mod connection;
+pub mod table;

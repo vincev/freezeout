@@ -13,6 +13,7 @@ env_logger = { workspace = true }
 freezeout-core = { path = "../core" }
 futures-util = { version = "0.3.31", default-features = false, features = ["sink"] }
 log = { workspace = true }
+parking_lot = { workspace = true }
 snow = { workspace = true }
 tokio = { version = "1.42.0", features=["full"] }
 tokio-tungstenite = "0.25.0"

@@ -1059,6 +1059,7 @@ dependencies = [
  "freezeout-core",
  "futures-util",
  "log",
+ "parking_lot",
  "snow",
  "tokio",
  "tokio-tungstenite",

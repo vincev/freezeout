@@ -12,6 +12,22 @@ use std::fmt;
 /// A key for signing messages.
 pub struct SigningKey(ed25519_dalek::SigningKey);
 
+/// Message signature.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct Signature(ed25519_dalek::Signature);
+
+/// Key for signature verification.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
+
+/// Player identifier derived from a signature verifying key.
+#[derive(Clone, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct PlayerId(HashValue);
+
+/// A hash value wrapper for serializable types.
+#[derive(Clone, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct HashValue([u8; digest::consts::U20::INT]);
+
 impl Default for SigningKey {
     fn default() -> Self {
         let mut rng = rand::thread_rng();
@@ -62,10 +78,6 @@ impl fmt::Debug for SigningKey {
     }
 }
 
-/// Message signature.
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct Signature(ed25519_dalek::Signature);
-
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -75,10 +87,6 @@ impl fmt::Debug for Signature {
         )
     }
 }
-
-/// Key for signature verification.
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
 
 impl VerifyingKey {
     /// Verifies a message signature.
@@ -106,10 +114,6 @@ impl fmt::Debug for VerifyingKey {
     }
 }
 
-/// Player identifier derived from a signature verifying key.
-#[derive(Copy, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct PlayerId(HashValue);
-
 impl fmt::Debug for PlayerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -120,9 +124,11 @@ impl fmt::Debug for PlayerId {
     }
 }
 
-/// A hash value wrapper for serializable types.
-#[derive(Clone, Copy, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct HashValue([u8; digest::consts::U20::INT]);
+impl fmt::Display for PlayerId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", bs58::encode(&self.0.as_bytes()).into_string())
+    }
+}
 
 impl HashValue {
     /// Creates a [HashValue] from a serializable struct.
