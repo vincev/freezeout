@@ -21,11 +21,11 @@ pub struct Signature(ed25519_dalek::Signature);
 pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
 
 /// Player identifier derived from a signature verifying key.
-#[derive(Clone, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct PlayerId(HashValue);
 
 /// A hash value wrapper for serializable types.
-#[derive(Clone, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct HashValue([u8; digest::consts::U20::INT]);
 
 impl Default for SigningKey {

@@ -19,7 +19,7 @@ use freezeout_core::{
 
 use crate::{
     connection::{self, EncryptedConnection},
-    table::Table,
+    table::{Table, TableMessage},
 };
 
 /// Networking config.
@@ -56,10 +56,6 @@ struct TablesSet(Vec<Arc<Table>>);
 
 /// Client connection handler.
 struct Handler {
-    /// The table for this connection.
-    table: Option<Arc<Table>>,
-    /// This handler player id.
-    player_id: PlayerId,
     /// The tables on this server.
     tables: Arc<TablesSet>,
     /// The server signing key shared by all connections.
@@ -83,9 +79,11 @@ pub async fn run(config: Config) -> Result<()> {
     let (shutdown_broadcast_tx, _) = broadcast::channel(1);
     let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel(1);
 
+    let sk = Arc::new(SigningKey::default());
+
     let mut server = Server {
-        tables: Arc::new(TablesSet::new(config.tables, config.seats)),
-        sk: Arc::new(SigningKey::default()),
+        tables: Arc::new(TablesSet::new(config.tables, config.seats, sk.clone())),
+        sk,
         listener,
         shutdown_broadcast_tx,
         shutdown_complete_tx,
@@ -124,8 +122,6 @@ impl Server {
             info!("Accepted connection from {addr}");
 
             let mut handler = Handler {
-                table: None,
-                player_id: PlayerId::default(),
                 sk: self.sk.clone(),
                 tables: self.tables.clone(),
                 shutdown_broadcast_rx: self.shutdown_broadcast_tx.subscribe(),
@@ -134,7 +130,7 @@ impl Server {
 
             // Spawn a task to handle connection messages.
             tokio::spawn(async move {
-                if let Err(err) = handler.run(socket, addr).await {
+                if let Err(err) = handler.run(socket).await {
                     error!("Connection to {addr} {err}");
                 }
 
@@ -166,17 +162,23 @@ impl Server {
 
 impl TablesSet {
     /// Creates a new table set.
-    fn new(tables: usize, seats: usize) -> Self {
-        Self((0..tables).map(|_| Arc::new(Table::new(seats))).collect())
+    fn new(tables: usize, seats: usize, sk: Arc<SigningKey>) -> Self {
+        Self(
+            (0..tables)
+                .map(|_| Arc::new(Table::new(seats, sk.clone())))
+                .collect(),
+        )
     }
 
-    /// Try to join a table on this set.
-    ///
-    /// Returns None if no table is available.
-    fn join_table(&self, player_id: &PlayerId, nickname: &str) -> Option<Arc<Table>> {
+    /// Join a table on this set.
+    async fn join_table(
+        &self,
+        player_id: &PlayerId,
+        nickname: &str,
+    ) -> Option<(Arc<Table>, mpsc::Receiver<TableMessage>)> {
         for table in &self.0 {
-            if table.join(player_id, nickname).is_ok() {
-                return Some(table.clone());
+            if let Ok(table_rx) = table.join(player_id, nickname).await {
+                return Some((table.clone(), table_rx));
             }
         }
 
@@ -186,65 +188,73 @@ impl TablesSet {
 
 impl Handler {
     /// Handle connection messages.
-    async fn run(&mut self, socket: TcpStream, addr: SocketAddr) -> Result<()> {
+    async fn run(&mut self, socket: TcpStream) -> Result<()> {
         let mut conn = connection::accept_async(socket).await?;
-
-        let res = loop {
-            tokio::select! {
-                _ = self.shutdown_broadcast_rx.recv() => {
-                    break Ok(());
-                }
-                res = conn.recv() => match res {
-                    Some(Ok(msg)) => {
-                        let res = self.handle_message(&mut conn, msg).await;
-                        if res.is_err() {
-                            break res;
-                        }
-                    },
-                    Some(Err(err)) => break Err(err),
-                    None => break Ok(()),
-                },
-            }
-        };
-
+        let res = self.handle_connection(&mut conn).await;
         conn.close().await;
-
-        if let Some(table) = &self.table {
-            table.leave(&self.player_id);
-        }
-
         res
     }
 
-    async fn handle_message(
-        &mut self,
-        conn: &mut EncryptedConnection,
-        msg: SignedMessage,
-    ) -> Result<()> {
-        let player_id = msg.player_id();
-        match msg.to_message() {
-            Message::JoinTable(nickname) => {
-                if self.table.is_none() {
-                    self.table = self.tables.join_table(&player_id, &nickname);
-                    self.player_id = player_id;
-                }
+    /// Handle connection messages.
+    async fn handle_connection(&mut self, conn: &mut EncryptedConnection) -> Result<()> {
+        // Wait for the first client message to get player id and join a table.
+        let msg = tokio::select! {
+            _ = self.shutdown_broadcast_rx.recv() => {
+                return Ok(());
+            }
+            res = conn.recv() => match res {
+                Some(Ok(msg)) => msg,
+                Some(Err(err)) => return Err(err),
+                None => return Ok(()),
+            },
+        };
 
-                if self.table.is_none() {
+        // Try to join a table and get a table message channel.
+        let player_id = msg.player_id();
+        let (table, mut table_rx) = match msg.to_message() {
+            Message::JoinTable(nickname) => {
+                if let Some((table, table_rx)) = self.tables.join_table(&player_id, &nickname).await
+                {
+                    (table, table_rx)
+                } else {
                     // Notify the client that there are no tables.
                     let msg = Message::Error("No table found".to_string());
                     conn.send(&SignedMessage::new(&self.sk, msg)).await?;
                     bail!("No table found");
                 }
             }
-            msg => {
-                if let Some(table) = &self.table {
-                    table.handle_message(&player_id, msg);
-                } else {
-                    bail!("Invalid message {player_id} didn't join a table");
+            _ => bail!("Invalid message {player_id} didn't join a table"),
+        };
+
+        let res = loop {
+            tokio::select! {
+                // Server is shutting down exit this handler.
+                _ = self.shutdown_broadcast_rx.recv() => break Ok(()),
+                // We have received a message from the client.
+                res = conn.recv() => match res {
+                    Some(Ok(msg)) => table.handle_message(msg).await,
+                    Some(Err(err)) => break Err(err),
+                    None => break Ok(()),
+                },
+                // We have received a message from the table.
+                res = table_rx.recv() => match res {
+                    Some(TableMessage::Send(msg)) => {
+                        let res = conn.send(&msg).await;
+                        if res.is_err() {
+                            break res;
+                        }
+                    }
+                    Some(TableMessage::Close) => {
+                        info!("Connection closed by table message");
+                        break Ok(());
+                    },
+                    None => {},
                 }
             }
-        }
+        };
 
-        Ok(())
+        table.leave(&player_id).await;
+
+        res
     }
 }

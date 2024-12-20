@@ -12,6 +12,10 @@ use crate::crypto::{PlayerId, Signature, SigningKey, VerifyingKey};
 pub enum Message {
     /// Join a table with a nickname.
     JoinTable(String),
+    /// A player joined the table.
+    PlayerJoined(PlayerId),
+    /// A player left the table.
+    PlayerLeft(PlayerId),
     /// An error message.
     Error(String),
 }
