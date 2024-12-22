@@ -4,7 +4,9 @@
 //! Freezeout Poker GUI client.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 
-pub mod gui;
-pub use gui::{App, Config};
+pub mod connect_view;
 
 pub mod connection;
+
+pub mod gui;
+pub use gui::{AppFrame, Config};

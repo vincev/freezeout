@@ -41,7 +41,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Freezeout",
         native_options,
-        Box::new(|cc| Ok(Box::new(freezeout_gui::App::new(config, cc)))),
+        Box::new(|cc| Ok(Box::new(freezeout_gui::AppFrame::new(config, cc)))),
     )
 }
 
@@ -74,7 +74,7 @@ fn main() {
             .start(
                 canvas,
                 Default::default(),
-                Box::new(|cc| Ok(Box::new(freezeout_gui::App::new(config, cc)))),
+                Box::new(|cc| Ok(Box::new(freezeout_gui::AppFrame::new(config, cc)))),
             )
             .await
             .expect("failed to start eframe");

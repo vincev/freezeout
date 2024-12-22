@@ -80,7 +80,7 @@ impl Table {
 
         let (table_tx, table_rx) = mpsc::channel(64);
 
-        // Tell the new player the players at the table joined.
+        // Send joined message for each player at the table to the new player.
         for player in &state.players {
             let msg = Message::PlayerJoined(player.player_id.clone());
             let smsg = Arc::new(SignedMessage::new(&state.sk, msg));
