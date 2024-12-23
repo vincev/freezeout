@@ -53,8 +53,9 @@ pub struct AppFrame {
 
 impl App {
     /// Connects to a server.
-    pub fn connect(&mut self, url: &str, sk: SigningKey, ctx: &Context) -> Result<()> {
-        let con = Connection::connect(url, ctx.clone())?;
+    pub fn connect(&mut self, sk: SigningKey, ctx: &Context) -> Result<()> {
+        let url = format!("ws://{}", self.config.server_address);
+        let con = Connection::connect(&url, ctx.clone())?;
 
         if let Some(mut c) = self.connection.take() {
             c.close();
@@ -111,7 +112,7 @@ impl AppFrame {
 
         AppFrame {
             app,
-            panel: Box::new(ConnectView::default()),
+            panel: Box::new(ConnectView::new(cc.storage)),
         }
     }
 }
