@@ -8,10 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use freezeout_core::{crypto::SigningKey, message::Message};
 
-use crate::{
-    connection::ConnectionEvent,
-    gui::{App, View},
-};
+use crate::{App, ConnectionEvent, GameView, View};
 
 const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
 const LABEL_FONT: FontId = FontId::new(16.0, FontFamily::Monospace);
@@ -23,6 +20,7 @@ pub struct ConnectView {
     player_id: String,
     nickname: String,
     error: String,
+    connection_open: bool,
 }
 
 /// Data persisted across sessions.
@@ -42,6 +40,7 @@ impl Default for ConnectView {
             player_id: sk.verifying_key().player_id().to_string(),
             nickname: String::default(),
             error: String::default(),
+            connection_open: false,
         }
     }
 }
@@ -58,6 +57,7 @@ impl ConnectView {
                     player_id: sk.verifying_key().player_id().to_string(),
                     nickname: d.nickname,
                     error: String::new(),
+                    connection_open: false,
                 }
             })
             .unwrap_or_default()
@@ -70,6 +70,7 @@ impl View for ConnectView {
             match event {
                 ConnectionEvent::Open => {
                     app.send_message(Message::JoinTable(self.nickname.to_string()));
+                    self.connection_open = true;
                 }
                 ConnectionEvent::Close => {
                     self.error = "Connection closed".to_string();
@@ -201,6 +202,10 @@ impl View for ConnectView {
         _frame: &mut eframe::Frame,
         _app: &mut App,
     ) -> Option<Box<dyn View>> {
-        None
+        if self.connection_open {
+            Some(Box::new(GameView::default()))
+        } else {
+            None
+        }
     }
 }

@@ -10,10 +10,7 @@ use freezeout_core::{
     message::{Message, SignedMessage},
 };
 
-use crate::{
-    connect_view::ConnectView,
-    connection::{Connection, ConnectionEvent},
-};
+use crate::{ConnectView, Connection, ConnectionEvent};
 
 /// App configuration parameters.
 #[derive(Debug)]
