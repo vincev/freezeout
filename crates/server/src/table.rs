@@ -8,9 +8,9 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
 use freezeout_core::{
-    crypto::{PlayerId, SigningKey},
+    crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
-    poker::Chips,
+    poker::{Chips, TableId},
 };
 
 /// Table state shared by all players who joined the table.
@@ -31,6 +31,7 @@ pub enum TableMessage {
 /// Internal table state.
 #[derive(Debug)]
 struct State {
+    table_id: TableId,
     seats: usize,
     join_chips: Chips,
     sk: Arc<SigningKey>,
@@ -40,7 +41,7 @@ struct State {
 /// A table player state.
 #[derive(Debug)]
 struct Player {
-    player_id: PlayerId,
+    player_id: PeerId,
     table_tx: mpsc::Sender<TableMessage>,
     nickname: String,
     chips: Chips,
@@ -52,6 +53,7 @@ impl Table {
     pub fn new(seats: usize, sk: Arc<SigningKey>) -> Self {
         Self {
             state: Mutex::new(State {
+                table_id: TableId::new_id(),
                 seats,
                 join_chips: Chips(1_000_000),
                 sk,
@@ -65,7 +67,7 @@ impl Table {
     /// Returns error if the table is full or the player has already joined.
     pub async fn join(
         &self,
-        player_id: &PlayerId,
+        player_id: &PeerId,
         nickname: &str,
     ) -> Result<mpsc::Receiver<TableMessage>> {
         let mut state = self.state.lock().await;
@@ -87,6 +89,14 @@ impl Table {
         state.broadcast(msg).await;
 
         let (table_tx, table_rx) = mpsc::channel(64);
+
+        // Send a table joined confirmation to the player who joined.
+        let msg = Message::TableJoined {
+            table_id: state.table_id,
+            chips: state.join_chips,
+        };
+        let smsg = Arc::new(SignedMessage::new(&state.sk, msg));
+        let _ = table_tx.send(TableMessage::Send(smsg.clone())).await;
 
         // Send joined message for each player at the table to the new player.
         for player in &state.players {
@@ -115,7 +125,7 @@ impl Table {
     }
 
     /// A player leaves the table.
-    pub async fn leave(&self, player_id: &PlayerId) {
+    pub async fn leave(&self, player_id: &PeerId) {
         let mut state = self.state.lock().await;
 
         let len_before = state.players.len();

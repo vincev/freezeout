@@ -6,8 +6,8 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    crypto::{PlayerId, Signature, SigningKey, VerifyingKey},
-    poker::Chips,
+    crypto::{PeerId, Signature, SigningKey, VerifyingKey},
+    poker::{Chips, TableId},
 };
 
 /// Message exchanged by a client and a server.
@@ -15,17 +15,24 @@ use crate::{
 pub enum Message {
     /// Join a table with a nickname.
     JoinTable(String),
+    /// Table joined confirmation.
+    TableJoined {
+        /// The table the player joined.
+        table_id: TableId,
+        /// The chips amount for the player who joined.
+        chips: Chips,
+    },
     /// A player joined the table.
     PlayerJoined {
         /// The player id.
-        player_id: PlayerId,
+        player_id: PeerId,
         /// The player nickname.
         nickname: String,
         /// The player chips.
         chips: Chips,
     },
     /// A player left the table.
-    PlayerLeft(PlayerId),
+    PlayerLeft(PeerId),
     /// An error message.
     Error(String),
 }
@@ -65,8 +72,8 @@ impl SignedMessage {
     }
 
     /// Returns the identifier of the player who sent this message.
-    pub fn player_id(&self) -> PlayerId {
-        self.vk.player_id()
+    pub fn sender(&self) -> PeerId {
+        self.vk.peer_id()
     }
 
     /// Extracts the signed message.

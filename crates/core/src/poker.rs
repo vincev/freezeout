@@ -3,7 +3,28 @@
 
 //! Types used in a Poker game.
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, sync::atomic};
+
+/// A unique table identifier.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct TableId(u32);
+
+impl TableId {
+    /// A table id for an unassigned table.
+    pub const NO_TABLE: TableId = TableId(0);
+
+    /// Create a new unique table id.
+    pub fn new_id() -> TableId {
+        static LAST_ID: atomic::AtomicU32 = atomic::AtomicU32::new(1);
+        TableId(LAST_ID.fetch_add(1, atomic::Ordering::Relaxed))
+    }
+}
+
+impl fmt::Display for TableId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Chips amount.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

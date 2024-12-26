@@ -37,7 +37,7 @@ impl Default for ConnectView {
         let sk = SigningKey::default();
         Self {
             passphrase: sk.phrase(),
-            player_id: sk.verifying_key().player_id().to_string(),
+            player_id: sk.verifying_key().peer_id().to_string(),
             nickname: String::default(),
             error: String::default(),
             connection_open: false,
@@ -54,7 +54,7 @@ impl ConnectView {
                 let sk = SigningKey::from_phrase(&d.passphrase).unwrap_or_default();
                 ConnectView {
                     passphrase: sk.phrase(),
-                    player_id: sk.verifying_key().player_id().to_string(),
+                    player_id: sk.verifying_key().peer_id().to_string(),
                     nickname: d.nickname,
                     error: String::new(),
                     connection_open: false,
@@ -115,7 +115,7 @@ impl View for ConnectView {
 
                             let sk = SigningKey::default();
                             self.passphrase = sk.phrase();
-                            self.player_id = sk.verifying_key().player_id().to_string();
+                            self.player_id = sk.verifying_key().peer_id().to_string();
                         }
                     });
 
@@ -126,7 +126,7 @@ impl View for ConnectView {
                                 if let Ok(sk) = SigningKey::from_phrase(text) {
                                     self.error.clear();
                                     self.passphrase = sk.phrase();
-                                    self.player_id = sk.verifying_key().player_id().to_string();
+                                    self.player_id = sk.verifying_key().peer_id().to_string();
                                 } else {
                                     self.error = "Invalid clipboard passphrase".to_string();
                                 }
@@ -188,7 +188,7 @@ impl View for ConnectView {
                         return;
                     };
 
-                    if let Err(e) = app.connect(sk, ctx) {
+                    if let Err(e) = app.connect(sk, self.nickname.trim(), ctx) {
                         self.error = "Connect error".to_string();
                         error!("Connect error: {e}");
                     }
@@ -198,12 +198,12 @@ impl View for ConnectView {
 
     fn next(
         &mut self,
-        _ctx: &Context,
+        ctx: &Context,
         _frame: &mut eframe::Frame,
         _app: &mut App,
     ) -> Option<Box<dyn View>> {
         if self.connection_open {
-            Some(Box::new(GameView::default()))
+            Some(Box::new(GameView::new(ctx)))
         } else {
             None
         }

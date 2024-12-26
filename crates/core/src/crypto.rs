@@ -20,9 +20,9 @@ pub struct Signature(ed25519_dalek::Signature);
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
 
-/// Player identifier derived from a signature verifying key.
+/// A message sender identifier derived from a signature verifying key.
 #[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct PlayerId(HashValue);
+pub struct PeerId(HashValue);
 
 /// A hash value wrapper for serializable types.
 #[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
@@ -99,8 +99,8 @@ impl VerifyingKey {
     }
 
     /// Returns the [PlayerId] for this key.
-    pub fn player_id(&self) -> PlayerId {
-        PlayerId(HashValue::from_serde(self.0.as_bytes()))
+    pub fn peer_id(&self) -> PeerId {
+        PeerId(HashValue::from_serde(self.0.as_bytes()))
     }
 }
 
@@ -114,7 +114,7 @@ impl fmt::Debug for VerifyingKey {
     }
 }
 
-impl fmt::Debug for PlayerId {
+impl fmt::Debug for PeerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -124,7 +124,7 @@ impl fmt::Debug for PlayerId {
     }
 }
 
-impl fmt::Display for PlayerId {
+impl fmt::Display for PeerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", bs58::encode(&self.0.as_bytes()).into_string())
     }

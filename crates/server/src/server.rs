@@ -13,7 +13,7 @@ use tokio::{
 };
 
 use freezeout_core::{
-    crypto::{PlayerId, SigningKey},
+    crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
 };
 
@@ -173,7 +173,7 @@ impl TablesSet {
     /// Join a table on this set.
     async fn join_table(
         &self,
-        player_id: &PlayerId,
+        player_id: &PeerId,
         nickname: &str,
     ) -> Option<(Arc<Table>, mpsc::Receiver<TableMessage>)> {
         for table in &self.0 {
@@ -210,7 +210,7 @@ impl Handler {
         };
 
         // Try to join a table and get a table message channel.
-        let player_id = msg.player_id();
+        let player_id = msg.sender();
         let (table, mut table_rx) = match msg.to_message() {
             Message::JoinTable(nickname) => {
                 if let Some((table, table_rx)) = self.tables.join_table(&player_id, &nickname).await

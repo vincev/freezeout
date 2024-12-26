@@ -6,7 +6,7 @@ use anyhow::Result;
 use eframe::egui::*;
 
 use freezeout_core::{
-    crypto::SigningKey,
+    crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
 };
 
@@ -24,7 +24,12 @@ pub struct App {
     /// The application configuration.
     pub config: Config,
     /// The application message signing key.
-    pub sk: SigningKey,
+    sk: SigningKey,
+    /// This client player id.
+    player_id: PeerId,
+    /// This client nickname
+    nickname: String,
+    /// This client connection.
     connection: Option<Connection>,
 }
 
@@ -49,8 +54,19 @@ pub struct AppFrame {
 }
 
 impl App {
+    fn new(config: Config) -> Self {
+        let sk = SigningKey::default();
+        Self {
+            config,
+            player_id: sk.verifying_key().peer_id(),
+            sk,
+            nickname: String::default(),
+            connection: None,
+        }
+    }
+
     /// Connects to a server.
-    pub fn connect(&mut self, sk: SigningKey, ctx: &Context) -> Result<()> {
+    pub fn connect(&mut self, sk: SigningKey, nickname: &str, ctx: &Context) -> Result<()> {
         let url = format!("ws://{}", self.config.server_address);
         let con = Connection::connect(&url, ctx.clone())?;
 
@@ -59,7 +75,9 @@ impl App {
         }
 
         self.connection = Some(con);
+        self.player_id = sk.verifying_key().peer_id();
         self.sk = sk;
+        self.nickname = nickname.to_string();
 
         Ok(())
     }
@@ -76,6 +94,16 @@ impl App {
         } else {
             None
         }
+    }
+
+    /// This client player id.
+    pub fn player_id(&self) -> &PeerId {
+        &self.player_id
+    }
+
+    /// This client nickname.
+    pub fn nickname(&self) -> &str {
+        &self.nickname
     }
 
     /// Sends a message to the server.
@@ -101,14 +129,8 @@ impl AppFrame {
 
         log::info!("Creating new app with config: {config:?}");
 
-        let app = App {
-            config,
-            sk: SigningKey::default(),
-            connection: None,
-        };
-
         AppFrame {
-            app,
+            app: App::new(config),
             panel: Box::new(ConnectView::new(cc.storage)),
         }
     }

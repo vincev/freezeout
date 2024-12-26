@@ -5,16 +5,52 @@
 use eframe::egui::*;
 use log::{error, info};
 
+use freezeout_core::{
+    crypto::PeerId,
+    message::{Message, SignedMessage},
+    poker::{Chips, TableId},
+};
+
 use crate::{App, ConnectView, ConnectionEvent, View};
 
 /// Connect view.
-#[derive(Default)]
+#[derive(Debug)]
 pub struct GameView {
-    error: String,
     connection_closed: bool,
+    game_state: GameState,
+}
+
+/// Game player data.
+#[derive(Debug)]
+struct Player {
+    player_id: PeerId,
+    nickname: String,
+    chips: Chips,
+}
+
+/// The game state.
+#[derive(Debug)]
+struct GameState {
+    table_id: TableId,
+    players: Vec<Player>,
+    error: Option<String>,
 }
 
 impl GameView {
+    /// Creates a new [GameView].
+    pub fn new(ctx: &Context) -> Self {
+        ctx.request_repaint();
+
+        Self {
+            connection_closed: false,
+            game_state: GameState {
+                table_id: TableId::NO_TABLE,
+                players: Vec::default(),
+                error: None,
+            },
+        }
+    }
+
     fn paint_table(&self, ui: &mut Ui, rect: &Rect) {
         fn paint_shape(ui: &mut Ui, rect: &Rect, fill: Color32) {
             let radius = rect.height() / 2.0;
@@ -82,11 +118,11 @@ impl View for GameView {
                     self.connection_closed = true;
                 }
                 ConnectionEvent::Error(e) => {
-                    self.error = format!("Connection error {e}");
+                    self.game_state.error = Some(format!("Connection error {e}"));
                     error!("Connection error {e}");
                 }
                 ConnectionEvent::Message(msg) => {
-                    info!("Get message: {msg:?}");
+                    self.game_state.handle_message(msg, app);
                 }
             }
         }
@@ -114,6 +150,46 @@ impl View for GameView {
             Some(Box::new(ConnectView::new(frame.storage())))
         } else {
             None
+        }
+    }
+}
+
+impl GameState {
+    fn handle_message(&mut self, msg: Box<SignedMessage>, app: &mut App) {
+        match msg.to_message() {
+            Message::TableJoined { table_id, chips } => {
+                self.table_id = table_id;
+                // A this player as the first player in the players list.
+                self.players.push(Player {
+                    player_id: app.player_id().clone(),
+                    nickname: app.nickname().to_string(),
+                    chips,
+                });
+
+                info!(
+                    "Joined table {} {:?}",
+                    table_id,
+                    self.players.last().unwrap()
+                )
+            }
+            Message::PlayerJoined {
+                player_id,
+                nickname,
+                chips,
+            } => {
+                self.players.push(Player {
+                    player_id,
+                    nickname,
+                    chips,
+                });
+
+                info!("Added player {:?}", self.players.last().unwrap())
+            }
+            Message::PlayerLeft(player_id) => {
+                self.players.retain(|p| p.player_id != player_id);
+            }
+            Message::Error(e) => self.error = Some(e),
+            _ => {}
         }
     }
 }
