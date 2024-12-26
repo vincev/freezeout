@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 use freezeout_core::{
     crypto::{PlayerId, SigningKey},
     message::{Message, SignedMessage},
+    poker::Chips,
 };
 
 /// Table state shared by all players who joined the table.
@@ -31,6 +32,7 @@ pub enum TableMessage {
 #[derive(Debug)]
 struct State {
     seats: usize,
+    join_chips: Chips,
     sk: Arc<SigningKey>,
     players: Vec<Player>,
 }
@@ -41,6 +43,7 @@ struct Player {
     player_id: PlayerId,
     table_tx: mpsc::Sender<TableMessage>,
     nickname: String,
+    chips: Chips,
 }
 
 impl Table {
@@ -50,6 +53,7 @@ impl Table {
         Self {
             state: Mutex::new(State {
                 seats,
+                join_chips: Chips(1_000_000),
                 sk,
                 players: Vec::with_capacity(seats),
             }),
@@ -75,24 +79,35 @@ impl Table {
         }
 
         // Tell all players at the table that a player joined.
-        let msg = Message::PlayerJoined(player_id.clone());
+        let msg = Message::PlayerJoined {
+            player_id: player_id.clone(),
+            nickname: nickname.to_string(),
+            chips: state.join_chips,
+        };
         state.broadcast(msg).await;
 
         let (table_tx, table_rx) = mpsc::channel(64);
 
         // Send joined message for each player at the table to the new player.
         for player in &state.players {
-            let msg = Message::PlayerJoined(player.player_id.clone());
+            let msg = Message::PlayerJoined {
+                player_id: player.player_id.clone(),
+                nickname: player.nickname.clone(),
+                chips: player.chips,
+            };
             let smsg = Arc::new(SignedMessage::new(&state.sk, msg));
             let _ = table_tx.send(TableMessage::Send(smsg.clone())).await;
         }
 
         // Add new player to the table.
-        state.players.push(Player {
+        let player = Player {
             player_id: player_id.clone(),
             table_tx,
             nickname: nickname.to_string(),
-        });
+            chips: state.join_chips,
+        };
+
+        state.players.push(player);
 
         info!("Player {player_id} joined the table.");
 

@@ -5,7 +5,10 @@
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::{PlayerId, Signature, SigningKey, VerifyingKey};
+use crate::{
+    crypto::{PlayerId, Signature, SigningKey, VerifyingKey},
+    poker::Chips,
+};
 
 /// Message exchanged by a client and a server.
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,7 +16,14 @@ pub enum Message {
     /// Join a table with a nickname.
     JoinTable(String),
     /// A player joined the table.
-    PlayerJoined(PlayerId),
+    PlayerJoined {
+        /// The player id.
+        player_id: PlayerId,
+        /// The player nickname.
+        nickname: String,
+        /// The player chips.
+        chips: Chips,
+    },
     /// A player left the table.
     PlayerLeft(PlayerId),
     /// An error message.
