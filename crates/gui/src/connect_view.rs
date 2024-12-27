@@ -12,7 +12,6 @@ use crate::{App, ConnectionEvent, GameView, View};
 
 const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
 const LABEL_FONT: FontId = FontId::new(16.0, FontFamily::Monospace);
-const APP_KEY: &str = "freezeout";
 
 /// Connect view.
 pub struct ConnectView {
@@ -47,9 +46,8 @@ impl Default for ConnectView {
 
 impl ConnectView {
     /// Creates a new connect view.
-    pub fn new(storage: Option<&dyn eframe::Storage>) -> Self {
-        storage
-            .and_then(|s| eframe::get_value::<StorageData>(s, APP_KEY))
+    pub fn new(storage: Option<&dyn eframe::Storage>, app: &App) -> Self {
+        app.get_storage::<StorageData>(storage)
             .map(|d| {
                 let sk = SigningKey::from_phrase(&d.passphrase).unwrap_or_default();
                 ConnectView {
@@ -177,10 +175,7 @@ impl View for ConnectView {
                             nickname: self.nickname.clone(),
                         };
 
-                        if let Some(storage) = frame.storage_mut() {
-                            eframe::set_value::<StorageData>(storage, APP_KEY, &data);
-                            storage.flush();
-                        }
+                        app.set_storage(frame.storage_mut(), &data);
 
                         sk
                     } else {

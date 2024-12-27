@@ -15,6 +15,9 @@ fn main() -> eframe::Result<()> {
         /// The server listening port.
         #[clap(long, short, default_value_t = 9871)]
         port: u16,
+        /// The configuration storge key.
+        #[clap(long, short, default_value = "default")]
+        storage: String,
     }
 
     env_logger::builder()
@@ -36,10 +39,11 @@ fn main() -> eframe::Result<()> {
     let cli = Cli::parse();
     let config = freezeout_gui::Config {
         server_address: format!("{}:{}", cli.address, cli.port),
+        storage_key: cli.storage,
     };
 
     eframe::run_native(
-        "Freezeout",
+        "freezeout",
         native_options,
         Box::new(|cc| Ok(Box::new(freezeout_gui::AppFrame::new(config, cc)))),
     )
@@ -68,7 +72,10 @@ fn main() {
             .expect("Failed to find server-address element")
             .inner_html();
 
-        let config = freezeout_gui::Config { server_address };
+        let config = freezeout_gui::Config {
+            server_address,
+            storage_key: "default".to_string(),
+        };
 
         eframe::WebRunner::new()
             .start(

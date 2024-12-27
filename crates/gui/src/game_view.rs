@@ -144,10 +144,10 @@ impl View for GameView {
         &mut self,
         _ctx: &Context,
         frame: &mut eframe::Frame,
-        _app: &mut App,
+        app: &mut App,
     ) -> Option<Box<dyn View>> {
         if self.connection_closed {
-            Some(Box::new(ConnectView::new(frame.storage())))
+            Some(Box::new(ConnectView::new(frame.storage(), app)))
         } else {
             None
         }

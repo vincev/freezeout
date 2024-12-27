@@ -17,6 +17,8 @@ use crate::{ConnectView, Connection, ConnectionEvent};
 pub struct Config {
     /// The server address in 'host:port' format.
     pub server_address: String,
+    /// Storage key used for saving configuration across runs.
+    pub storage_key: String,
 }
 
 /// The application state shared by all views.
@@ -120,6 +122,25 @@ impl App {
             c.close();
         }
     }
+
+    /// Get a value from the app storage.
+    pub fn get_storage<T>(&self, storage: Option<&dyn eframe::Storage>) -> Option<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        storage.and_then(|s| eframe::get_value::<T>(s, &self.config.storage_key))
+    }
+
+    /// Set a value in the app storage.
+    pub fn set_storage<T>(&self, storage: Option<&mut (dyn eframe::Storage + 'static)>, data: &T)
+    where
+        T: serde::Serialize,
+    {
+        if let Some(s) = storage {
+            eframe::set_value::<T>(s, &self.config.storage_key, data);
+            s.flush();
+        }
+    }
 }
 
 impl AppFrame {
@@ -128,11 +149,10 @@ impl AppFrame {
         cc.egui_ctx.set_theme(Theme::Dark);
 
         log::info!("Creating new app with config: {config:?}");
+        let app = App::new(config);
+        let panel = Box::new(ConnectView::new(cc.storage, &app));
 
-        AppFrame {
-            app: App::new(config),
-            panel: Box::new(ConnectView::new(cc.storage)),
-        }
+        AppFrame { app, panel }
     }
 }
 

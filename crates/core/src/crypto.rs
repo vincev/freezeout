@@ -98,7 +98,7 @@ impl VerifyingKey {
         self.0.verify(hash.as_bytes(), &signature.0).is_ok()
     }
 
-    /// Returns the [PlayerId] for this key.
+    /// Returns the [PeerId] for this key.
     pub fn peer_id(&self) -> PeerId {
         PeerId(HashValue::from_serde(self.0.as_bytes()))
     }
