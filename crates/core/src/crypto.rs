@@ -4,7 +4,7 @@
 //! Cryptographic types for signing messages.
 use anyhow::Result;
 use bip32::Mnemonic;
-use blake2::{digest, digest::typenum::ToInt, Blake2b, Digest};
+use blake2::{digest, digest::typenum::ToInt, Blake2s, Digest};
 use ed25519_dalek::{Signer, Verifier};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -22,11 +22,10 @@ pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
 
 /// A message sender identifier derived from a signature verifying key.
 #[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct PeerId(HashValue);
+pub struct PeerId([u8; digest::consts::U16::INT]);
 
-/// A hash value wrapper for serializable types.
-#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct HashValue([u8; digest::consts::U20::INT]);
+/// The hasher used for signatures.
+type SigHasher = Blake2s<digest::consts::U32>;
 
 impl Default for SigningKey {
     fn default() -> Self {
@@ -52,8 +51,9 @@ impl SigningKey {
     where
         T: Serialize,
     {
-        let hash = HashValue::from_serde(msg);
-        Signature(self.0.sign(hash.as_bytes()))
+        let mut hasher = SigHasher::new();
+        bincode::serialize_into(&mut hasher, msg).expect("should serialize to hasher");
+        Signature(self.0.sign(&hasher.finalize()))
     }
 
     /// Get the secret key phrase.
@@ -94,13 +94,16 @@ impl VerifyingKey {
     where
         T: Serialize,
     {
-        let hash = HashValue::from_serde(msg);
-        self.0.verify(hash.as_bytes(), &signature.0).is_ok()
+        let mut hasher = SigHasher::new();
+        bincode::serialize_into(&mut hasher, msg).expect("should serialize to hasher");
+        self.0.verify(&hasher.finalize(), &signature.0).is_ok()
     }
 
     /// Returns the [PeerId] for this key.
     pub fn peer_id(&self) -> PeerId {
-        PeerId(HashValue::from_serde(self.0.as_bytes()))
+        let mut hasher = Blake2s::<digest::consts::U16>::new();
+        hasher.update(self.0.as_bytes());
+        PeerId(hasher.finalize().into())
     }
 }
 
@@ -114,42 +117,27 @@ impl fmt::Debug for VerifyingKey {
     }
 }
 
+impl PeerId {
+    /// The hex digits for this peer id.
+    pub fn digits(&self) -> String {
+        self.0
+            .iter()
+            .fold(String::with_capacity(32), |mut output, b| {
+                output.push_str(&format!("{b:02X}"));
+                output
+            })
+    }
+}
+
 impl fmt::Debug for PeerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "PlayerId({})",
-            bs58::encode(&self.0.as_bytes()).into_string()
-        )
+        write!(f, "PeerId({})", self.digits())
     }
 }
 
 impl fmt::Display for PeerId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", bs58::encode(&self.0.as_bytes()).into_string())
-    }
-}
-
-impl HashValue {
-    /// Creates a [HashValue] from a serializable struct.
-    pub fn from_serde<T>(t: &T) -> Self
-    where
-        T: Serialize,
-    {
-        let mut hasher = Blake2b::<digest::consts::U20>::new();
-        bincode::serialize_into(&mut hasher, t).expect("should serialize to hasher");
-        Self(hasher.finalize().into())
-    }
-
-    /// Returns a reference to this hash bytes.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl fmt::Debug for HashValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HashValue({})", bs58::encode(&self.0).into_string())
+        write!(f, "{}", self.digits())
     }
 }
 

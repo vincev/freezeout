@@ -36,7 +36,7 @@ impl Default for ConnectView {
         let sk = SigningKey::default();
         Self {
             passphrase: sk.phrase(),
-            player_id: sk.verifying_key().peer_id().to_string(),
+            player_id: sk.verifying_key().peer_id().digits(),
             nickname: String::default(),
             error: String::default(),
             connection_open: false,
@@ -52,13 +52,18 @@ impl ConnectView {
                 let sk = SigningKey::from_phrase(&d.passphrase).unwrap_or_default();
                 ConnectView {
                     passphrase: sk.phrase(),
-                    player_id: sk.verifying_key().peer_id().to_string(),
+                    player_id: sk.verifying_key().peer_id().digits(),
                     nickname: d.nickname,
                     error: String::new(),
                     connection_open: false,
                 }
             })
             .unwrap_or_default()
+    }
+
+    fn assign_key(&mut self, sk: &SigningKey) {
+        self.passphrase = sk.phrase();
+        self.player_id = sk.verifying_key().peer_id().digits();
     }
 }
 
@@ -93,7 +98,7 @@ impl View for ConnectView {
                         TextEdit::singleline(&mut self.nickname)
                             .hint_text("Nickname")
                             .char_limit(10)
-                            .desired_width(350.0)
+                            .desired_width(265.0)
                             .font(TEXT_FONT)
                             .show(ui);
                     });
@@ -103,8 +108,8 @@ impl View for ConnectView {
 
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Passphrase").font(LABEL_FONT));
-                        ui.add_space(180.0);
+                        ui.label(RichText::new("My Public Player ID").font(LABEL_FONT));
+                        ui.add_space(85.0);
                         if ui
                             .button(RichText::new("Generate").font(TEXT_FONT))
                             .clicked()
@@ -112,8 +117,7 @@ impl View for ConnectView {
                             self.error.clear();
 
                             let sk = SigningKey::default();
-                            self.passphrase = sk.phrase();
-                            self.player_id = sk.verifying_key().peer_id().to_string();
+                            self.assign_key(&sk);
                         }
                     });
 
@@ -123,8 +127,7 @@ impl View for ConnectView {
                             if let Event::Paste(text) = event {
                                 if let Ok(sk) = SigningKey::from_phrase(text) {
                                     self.error.clear();
-                                    self.passphrase = sk.phrase();
-                                    self.player_id = sk.verifying_key().peer_id().to_string();
+                                    self.assign_key(&sk);
                                 } else {
                                     self.error = "Invalid clipboard passphrase".to_string();
                                 }
@@ -132,19 +135,21 @@ impl View for ConnectView {
                         }
                     });
 
-                    let mut passphrase = self.passphrase.clone();
-                    TextEdit::multiline(&mut passphrase)
-                        .hint_text("Passphrase")
-                        .char_limit(215)
-                        .desired_rows(5)
+                    // Copy field value to avoid editing, these fields can only be
+                    // changed by pasting the passphrase or with the generate button.
+                    let mut player_id = self.player_id.clone();
+                    TextEdit::singleline(&mut player_id)
                         .desired_width(350.0)
                         .font(TEXT_FONT)
                         .show(ui);
 
-                    ui.label(RichText::new("Player ID").font(LABEL_FONT));
-                    let mut player_id = self.player_id.clone();
-                    TextEdit::singleline(&mut player_id)
-                        .hint_text("Player ID")
+                    ui.add_space(10.0);
+
+                    ui.label(RichText::new("My Secret Passphrase").font(LABEL_FONT));
+                    let mut passphrase = self.passphrase.clone();
+                    TextEdit::multiline(&mut passphrase)
+                        .char_limit(215)
+                        .desired_rows(5)
                         .desired_width(350.0)
                         .font(TEXT_FONT)
                         .show(ui);

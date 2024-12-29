@@ -24,6 +24,8 @@ pub struct GameView {
 #[derive(Debug)]
 struct Player {
     player_id: PeerId,
+    // Cache player id digits to avoid generation at every repaint.
+    player_id_digits: String,
     nickname: String,
     chips: Chips,
 }
@@ -222,12 +224,10 @@ impl Player {
     fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
         let rect = rect.shrink(10.0);
 
-        let digits = self.player_id.to_string();
-
         let layout_job = text::LayoutJob {
-            wrap: text::TextWrapping::wrap_at_width(70.0),
+            wrap: text::TextWrapping::wrap_at_width(80.0),
             ..text::LayoutJob::single_section(
-                digits,
+                self.player_id_digits.clone(),
                 TextFormat {
                     font_id: FontId::new(14.0, FontFamily::Monospace),
                     extra_letter_spacing: 1.0,
@@ -272,9 +272,11 @@ impl GameState {
         match msg.to_message() {
             Message::TableJoined { table_id, chips } => {
                 self.table_id = table_id;
-                // A this player as the first player in the players list.
+                // Add this player as the first player in the players list.
+                let player_id = app.player_id().clone();
                 self.players.push(Player {
-                    player_id: app.player_id().clone(),
+                    player_id_digits: player_id.digits(),
+                    player_id,
                     nickname: app.nickname().to_string(),
                     chips,
                 });
@@ -291,6 +293,7 @@ impl GameState {
                 chips,
             } => {
                 self.players.push(Player {
+                    player_id_digits: player_id.digits(),
                     player_id,
                     nickname,
                     chips,
