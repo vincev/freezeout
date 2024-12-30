@@ -218,18 +218,19 @@ impl Player {
         };
 
         let rect = Rect::from_min_size(pos2(x, y), PLAYER_SIZE);
-        self.paint_id(ui, &rect, align);
+        let id_rect = self.paint_id(ui, &rect, align);
+        self.paint_name_and_chips(ui, &id_rect);
     }
 
-    fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
+    fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
         let rect = rect.shrink(10.0);
 
         let layout_job = text::LayoutJob {
-            wrap: text::TextWrapping::wrap_at_width(80.0),
+            wrap: text::TextWrapping::wrap_at_width(75.0),
             ..text::LayoutJob::single_section(
                 self.player_id_digits.clone(),
                 TextFormat {
-                    font_id: FontId::new(14.0, FontFamily::Monospace),
+                    font_id: FontId::new(13.0, FontFamily::Monospace),
                     extra_letter_spacing: 1.0,
                     color: Color32::from_rgb(20, 180, 20),
                     ..Default::default()
@@ -253,6 +254,40 @@ impl Player {
 
         let text_pos = rect.left_top();
         ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
+
+        bg_rect
+    }
+
+    fn paint_name_and_chips(&self, ui: &mut Ui, rect: &Rect) {
+        let bg_rect = Rect::from_min_size(
+            rect.left_bottom() + vec2(0.0, 10.0),
+            vec2(rect.width(), 40.0),
+        );
+
+        paint_border(ui, &bg_rect);
+
+        let painter = ui.painter().with_clip_rect(bg_rect.shrink(3.0));
+
+        let text_color = Color32::from_rgb(20, 180, 20);
+        let font = FontId::new(13.0, FontFamily::Monospace);
+
+        let galley =
+            ui.painter()
+                .layout_no_wrap(self.nickname.to_string(), font.clone(), text_color);
+
+        painter.galley(
+            bg_rect.left_top() + vec2(5.0, 4.0),
+            galley.clone(),
+            text_color,
+        );
+
+        let chips_pos = bg_rect.left_top() + vec2(0.0, galley.size().y);
+
+        let galley = ui
+            .painter()
+            .layout_no_wrap(self.chips.to_string(), font, text_color);
+
+        painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), text_color);
     }
 }
 
