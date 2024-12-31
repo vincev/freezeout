@@ -5,6 +5,9 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, sync::atomic};
 
+mod cards;
+pub use cards::{Card, Deck, Rank, Suit};
+
 /// A unique table identifier.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct TableId(u32);

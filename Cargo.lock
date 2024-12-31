@@ -1021,6 +1021,7 @@ dependencies = [
 name = "freezeout-core"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "bincode",
  "bip32",

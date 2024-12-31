@@ -12,18 +12,6 @@ use std::fmt;
 /// A key for signing messages.
 pub struct SigningKey(ed25519_dalek::SigningKey);
 
-/// Message signature.
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct Signature(ed25519_dalek::Signature);
-
-/// Key for signature verification.
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
-
-/// A message sender identifier derived from a signature verifying key.
-#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub struct PeerId([u8; digest::consts::U16::INT]);
-
 /// The hasher used for signatures.
 type SigHasher = Blake2s<digest::consts::U32>;
 
@@ -78,6 +66,10 @@ impl fmt::Debug for SigningKey {
     }
 }
 
+/// Message signature.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct Signature(ed25519_dalek::Signature);
+
 impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -87,6 +79,10 @@ impl fmt::Debug for Signature {
         )
     }
 }
+
+/// Key for signature verification.
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct VerifyingKey(ed25519_dalek::VerifyingKey);
 
 impl VerifyingKey {
     /// Verifies a message signature.
@@ -116,6 +112,10 @@ impl fmt::Debug for VerifyingKey {
         )
     }
 }
+
+/// A message sender identifier derived from a signature verifying key.
+#[derive(Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
+pub struct PeerId([u8; digest::consts::U16::INT]);
 
 impl PeerId {
     /// The hex digits for this peer id.
