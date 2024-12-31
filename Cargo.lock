@@ -1036,6 +1036,7 @@ dependencies = [
 name = "freezeout-gui"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "clap",
  "eframe",
@@ -1043,6 +1044,7 @@ dependencies = [
  "ewebsock",
  "freezeout-core",
  "getrandom",
+ "image",
  "log",
  "serde",
  "snow",

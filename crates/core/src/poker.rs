@@ -54,6 +54,18 @@ impl fmt::Display for Chips {
     }
 }
 
+/// The player cards.
+#[derive(Copy, Clone, Debug, Default, Serialize, Deserialize)]
+pub enum PlayerCards {
+    /// The player has no cards.
+    #[default]
+    None,
+    /// The player has cards but their values are covered.
+    Covered,
+    /// The player cards.
+    Cards(Card, Card),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

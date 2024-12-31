@@ -8,34 +8,16 @@ use log::{error, info};
 use freezeout_core::{
     crypto::PeerId,
     message::{Message, SignedMessage},
-    poker::{Chips, TableId},
+    poker::{Chips, PlayerCards, TableId},
 };
 
-use crate::{App, ConnectView, ConnectionEvent, View};
+use crate::{App, ConnectView, ConnectionEvent, Textures, View};
 
 /// Connect view.
-#[derive(Debug)]
 pub struct GameView {
     connection_closed: bool,
     game_state: GameState,
-}
-
-/// Game player data.
-#[derive(Debug)]
-struct Player {
-    player_id: PeerId,
-    // Cache player id digits to avoid generation at every repaint.
-    player_id_digits: String,
-    nickname: String,
-    chips: Chips,
-}
-
-/// The game state.
-#[derive(Debug)]
-struct GameState {
-    table_id: TableId,
-    players: Vec<Player>,
-    error: Option<String>,
+    textures: Textures,
 }
 
 impl GameView {
@@ -50,6 +32,7 @@ impl GameView {
                 players: Vec::default(),
                 error: None,
             },
+            textures: Textures::new(ctx),
         }
     }
 
@@ -138,7 +121,7 @@ impl GameView {
         };
 
         for (player, align) in self.game_state.players.iter().zip(seats) {
-            player.paint(ui, rect, align);
+            player.paint(ui, rect, align, &self.textures);
         }
     }
 }
@@ -191,8 +174,23 @@ impl View for GameView {
     }
 }
 
+/// Game player data.
+#[derive(Debug)]
+struct Player {
+    /// This player id.
+    player_id: PeerId,
+    // Cache player id digits to avoid generation at every repaint.
+    player_id_digits: String,
+    /// This player nickname.
+    nickname: String,
+    /// This player chips.
+    chips: Chips,
+    /// This playe cards.
+    cards: PlayerCards,
+}
+
 impl Player {
-    fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
+    fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
         const PLAYER_SIZE: Vec2 = vec2(120.0, 160.0);
 
         let rect = rect.shrink(20.0);
@@ -220,6 +218,7 @@ impl Player {
         let rect = Rect::from_min_size(pos2(x, y), PLAYER_SIZE);
         let id_rect = self.paint_id(ui, &rect, align);
         self.paint_name_and_chips(ui, &id_rect);
+        self.paint_cards(ui, &id_rect, align, textures);
     }
 
     fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
@@ -289,6 +288,35 @@ impl Player {
 
         painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), text_color);
     }
+
+    fn paint_cards(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
+        let (tx1, tx2) = match self.cards {
+            PlayerCards::None => return,
+            PlayerCards::Covered => (textures.back(), textures.back()),
+            PlayerCards::Cards(c1, c2) => (textures.card(c1), textures.card(c2)),
+        };
+
+        let cards_rect = if let Align::RIGHT = align.x() {
+            Rect::from_min_size(
+                rect.left_top() - vec2(rect.size().x + 10.0, 0.0),
+                rect.size(),
+            )
+        } else {
+            Rect::from_min_size(rect.right_top() + vec2(10.0, 0.0), rect.size())
+        };
+
+        paint_border(ui, &cards_rect);
+
+        let card_lx = (rect.size().x - 10.0) / 2.0;
+        let card_size = vec2(card_lx, rect.size().y - 8.0);
+
+        let card_pos = cards_rect.left_top() + vec2(4.0, 4.0);
+        let c1_rect = Rect::from_min_size(card_pos, card_size);
+        Image::new(&tx1).rounding(2.0).paint_at(ui, c1_rect);
+
+        let c2_rect = Rect::from_min_size(card_pos + vec2(card_size.x + 2.0, 0.0), card_size);
+        Image::new(&tx2).rounding(2.0).paint_at(ui, c2_rect);
+    }
 }
 
 fn paint_border(ui: &mut Ui, rect: &Rect) {
@@ -300,6 +328,14 @@ fn paint_border(ui: &mut Ui, rect: &Rect) {
         let stroke = Stroke::new(1.0, Color32::from_gray(color as u8));
         ui.painter().rect_stroke(border_rect, 5.0, stroke);
     }
+}
+
+/// This client game state.
+#[derive(Debug)]
+struct GameState {
+    table_id: TableId,
+    players: Vec<Player>,
+    error: Option<String>,
 }
 
 impl GameState {
@@ -314,6 +350,7 @@ impl GameState {
                     player_id,
                     nickname: app.nickname().to_string(),
                     chips,
+                    cards: PlayerCards::None,
                 });
 
                 info!(
@@ -332,12 +369,30 @@ impl GameState {
                     player_id,
                     nickname,
                     chips,
+                    cards: PlayerCards::None,
                 });
 
                 info!("Added player {:?}", self.players.last().unwrap())
             }
             Message::PlayerLeft(player_id) => {
                 self.players.retain(|p| p.player_id != player_id);
+            }
+            Message::DealCards(c1, c2) => {
+                // This client player should be in first position.
+                assert!(!self.players.is_empty());
+                assert!(&self.players[0].player_id == app.player_id());
+
+                self.players[0].cards = PlayerCards::Cards(c1, c2);
+                info!(
+                    "Player {} received cards {:?}",
+                    app.player_id(),
+                    self.players[0].cards
+                );
+
+                // Deal covered cards to the other players.
+                for player in self.players.iter_mut().skip(1) {
+                    player.cards = PlayerCards::Covered;
+                }
             }
             Message::Error(e) => self.error = Some(e),
             _ => {}

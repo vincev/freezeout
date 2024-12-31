@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, Mutex};
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
-    poker::{Chips, TableId},
+    poker::{Chips, Deck, PlayerCards, TableId},
 };
 
 /// Table state shared by all players who joined the table.
@@ -36,15 +36,24 @@ struct State {
     join_chips: Chips,
     sk: Arc<SigningKey>,
     players: Vec<Player>,
+    deck: Deck,
 }
 
 /// A table player state.
 #[derive(Debug)]
 struct Player {
+    /// The player peer id.
     player_id: PeerId,
+    /// The channel to send messages to this player connection.
     table_tx: mpsc::Sender<TableMessage>,
+    /// This playe nickname.
     nickname: String,
+    /// This player chips.
     chips: Chips,
+    /// This player cards that are visible to all other players.
+    public_cards: PlayerCards,
+    /// This player private cards.
+    hole_cards: PlayerCards,
 }
 
 impl Table {
@@ -58,6 +67,7 @@ impl Table {
                 join_chips: Chips(1_000_000),
                 sk,
                 players: Vec::with_capacity(seats),
+                deck: Deck::new_and_shuffled(),
             }),
         }
     }
@@ -115,11 +125,18 @@ impl Table {
             table_tx,
             nickname: nickname.to_string(),
             chips: state.join_chips,
+            public_cards: PlayerCards::None,
+            hole_cards: PlayerCards::None,
         };
 
         state.players.push(player);
 
         info!("Player {player_id} joined the table.");
+
+        // All players joined deal cards.
+        if state.players.len() == state.seats {
+            state.shuffle_and_deal().await;
+        }
 
         Ok(table_rx)
     }
@@ -151,7 +168,32 @@ impl State {
     async fn broadcast(&self, msg: Message) {
         let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
         for player in &self.players {
-            let _ = player.table_tx.send(TableMessage::Send(smsg.clone())).await;
+            player.send(smsg.clone()).await;
         }
+    }
+
+    /// Shuffle a new deck and deal hole cards to players.
+    async fn shuffle_and_deal(&mut self) {
+        self.deck = Deck::new_and_shuffled();
+
+        for player in &mut self.players {
+            player.public_cards = PlayerCards::Covered;
+            player.hole_cards = PlayerCards::Cards(self.deck.deal(), self.deck.deal());
+        }
+
+        // Deal the cards to each player.
+        for player in &self.players {
+            if let PlayerCards::Cards(c1, c2) = player.hole_cards {
+                let msg = Message::DealCards(c1, c2);
+                let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
+                player.send(smsg.clone()).await;
+            }
+        }
+    }
+}
+
+impl Player {
+    async fn send(&self, msg: Arc<SignedMessage>) {
+        let _ = self.table_tx.send(TableMessage::Send(msg)).await;
     }
 }

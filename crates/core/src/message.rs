@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto::{PeerId, Signature, SigningKey, VerifyingKey},
-    poker::{Chips, TableId},
+    poker::{Card, Chips, TableId},
 };
 
 /// Message exchanged by a client and a server.
@@ -31,6 +31,8 @@ pub enum Message {
         /// The player chips.
         chips: Chips,
     },
+    /// Deal cards to a player.
+    DealCards(Card, Card),
     /// A player left the table.
     PlayerLeft(PeerId),
     /// An error message.
