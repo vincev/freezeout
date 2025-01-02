@@ -171,7 +171,7 @@ impl TablesSet {
     }
 
     /// Join a table on this set.
-    async fn join_table(
+    async fn join(
         &self,
         player_id: &PeerId,
         nickname: &str,
@@ -213,8 +213,7 @@ impl Handler {
         let player_id = msg.sender();
         let (table, mut table_rx) = match msg.to_message() {
             Message::JoinTable(nickname) => {
-                if let Some((table, table_rx)) = self.tables.join_table(&player_id, &nickname).await
-                {
+                if let Some((table, table_rx)) = self.tables.join(&player_id, &nickname).await {
                     (table, table_rx)
                 } else {
                     // Notify the client that there are no tables.
@@ -232,7 +231,7 @@ impl Handler {
                 _ = self.shutdown_broadcast_rx.recv() => break Ok(()),
                 // We have received a message from the client.
                 res = conn.recv() => match res {
-                    Some(Ok(msg)) => table.handle_message(msg).await,
+                    Some(Ok(msg)) => table.message(msg).await,
                     Some(Err(err)) => break Err(err),
                     None => break Ok(()),
                 },

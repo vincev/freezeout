@@ -33,6 +33,39 @@ impl fmt::Display for TableId {
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Chips(pub u32);
 
+impl Chips {
+    /// The zero chips.
+    pub const ZERO: Chips = Chips(0);
+}
+
+impl std::ops::Add for Chips {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Chips(self.0 + rhs.0)
+    }
+}
+
+impl std::ops::AddAssign for Chips {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 = self.0.saturating_add(rhs.0);
+    }
+}
+
+impl std::ops::Sub<Chips> for Chips {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0.saturating_sub(rhs.0))
+    }
+}
+
+impl std::ops::SubAssign for Chips {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 = self.0.saturating_sub(rhs.0);
+    }
+}
+
 impl fmt::Display for Chips {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let amount = self.0;

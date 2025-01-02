@@ -7,7 +7,7 @@ use log::{error, info};
 
 use freezeout_core::{
     crypto::PeerId,
-    message::{Message, SignedMessage},
+    message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
     poker::{Chips, PlayerCards, TableId},
 };
 
@@ -185,6 +185,10 @@ struct Player {
     nickname: String,
     /// This player chips.
     chips: Chips,
+    /// The last player bet.
+    bet: Chips,
+    /// The last player action.
+    action: PlayerAction,
     /// This playe cards.
     cards: PlayerCards,
 }
@@ -350,6 +354,8 @@ impl GameState {
                     player_id,
                     nickname: app.nickname().to_string(),
                     chips,
+                    bet: Chips::ZERO,
+                    action: PlayerAction::None,
                     cards: PlayerCards::None,
                 });
 
@@ -369,6 +375,8 @@ impl GameState {
                     player_id,
                     nickname,
                     chips,
+                    bet: Chips::ZERO,
+                    action: PlayerAction::None,
                     cards: PlayerCards::None,
                 });
 
@@ -376,6 +384,12 @@ impl GameState {
             }
             Message::PlayerLeft(player_id) => {
                 self.players.retain(|p| p.player_id != player_id);
+            }
+            Message::StartHand => {
+                // Prepare for a new hand.
+                for player in &mut self.players {
+                    player.cards = PlayerCards::None;
+                }
             }
             Message::DealCards(c1, c2) => {
                 // This client player should be in first position.
@@ -388,14 +402,35 @@ impl GameState {
                     app.player_id(),
                     self.players[0].cards
                 );
-
-                // Deal covered cards to the other players.
-                for player in self.players.iter_mut().skip(1) {
-                    player.cards = PlayerCards::Covered;
-                }
+            }
+            Message::GameUpdate { players } => {
+                self.update_players(players);
             }
             Message::Error(e) => self.error = Some(e),
             _ => {}
+        }
+    }
+
+    fn update_players(&mut self, updates: Vec<PlayerUpdate>) {
+        for update in updates {
+            if let Some(pos) = self
+                .players
+                .iter_mut()
+                .position(|p| p.player_id == update.player_id)
+            {
+                let player = &mut self.players[pos];
+                player.chips = update.chips;
+                player.bet = update.bet;
+                player.action = update.action;
+
+                // Do not override cards for local player as these are assigned at
+                // players cards dealing.
+                if pos != 0 {
+                    player.cards = update.cards;
+                }
+
+                info!("Updated player {player:?}");
+            }
         }
     }
 }

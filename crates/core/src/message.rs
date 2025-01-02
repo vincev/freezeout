@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     crypto::{PeerId, Signature, SigningKey, VerifyingKey},
-    poker::{Card, Chips, TableId},
+    poker::{Card, Chips, PlayerCards, TableId},
 };
 
 /// Message exchanged by a client and a server.
@@ -31,12 +31,71 @@ pub enum Message {
         /// The player chips.
         chips: Chips,
     },
+    /// Tell players to prepare for a new hand.
+    StartHand,
     /// Deal cards to a player.
     DealCards(Card, Card),
     /// A player left the table.
     PlayerLeft(PeerId),
+    /// A game state update.
+    GameUpdate {
+        /// The players update.
+        players: Vec<PlayerUpdate>,
+    },
     /// An error message.
     Error(String),
+}
+
+/// A player update details.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlayerUpdate {
+    /// The player id.
+    pub player_id: PeerId,
+    /// The player chips.
+    pub chips: Chips,
+    /// The player current bet.
+    pub bet: Chips,
+    /// The last player action.
+    pub action: PlayerAction,
+    /// The player cards.
+    pub cards: PlayerCards,
+}
+
+/// A Player action.
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum PlayerAction {
+    /// No action.
+    None,
+    /// Player pays small blind.
+    SmallBlind,
+    /// Player pays big blind.
+    BigBlind,
+    /// Player calls.
+    Call,
+    /// Player checks.
+    Check,
+    /// Player bets.
+    Bet,
+    /// Player raises.
+    Raise,
+    /// Player folds.
+    Fold,
+}
+
+impl PlayerAction {
+    /// The action label.
+    pub fn label(&self) -> &'static str {
+        match self {
+            PlayerAction::SmallBlind => "SB",
+            PlayerAction::BigBlind => "BB",
+            PlayerAction::Call => "CALL",
+            PlayerAction::Check => "CHECK",
+            PlayerAction::Bet => "BET",
+            PlayerAction::Raise => "RAISE",
+            PlayerAction::Fold => "FOLD",
+            PlayerAction::None => "",
+        }
+    }
 }
 
 /// A signed message.
