@@ -194,6 +194,9 @@ struct Player {
 }
 
 impl Player {
+    const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
+    const BG_COLOR: Color32 = Color32::from_gray(20);
+
     fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
         const PLAYER_SIZE: Vec2 = vec2(120.0, 160.0);
 
@@ -223,6 +226,7 @@ impl Player {
         let id_rect = self.paint_id(ui, &rect, align);
         self.paint_name_and_chips(ui, &id_rect);
         self.paint_cards(ui, &id_rect, align, textures);
+        self.paint_action(ui, &id_rect, align);
     }
 
     fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
@@ -235,7 +239,7 @@ impl Player {
                 TextFormat {
                     font_id: FontId::new(13.0, FontFamily::Monospace),
                     extra_letter_spacing: 1.0,
-                    color: Color32::from_rgb(20, 180, 20),
+                    color: Self::TEXT_COLOR,
                     ..Default::default()
                 },
             )
@@ -271,7 +275,7 @@ impl Player {
 
         let painter = ui.painter().with_clip_rect(bg_rect.shrink(3.0));
 
-        let text_color = Color32::from_rgb(20, 180, 20);
+        let text_color = Self::TEXT_COLOR;
         let font = FontId::new(13.0, FontFamily::Monospace);
 
         let galley =
@@ -320,6 +324,55 @@ impl Player {
 
         let c2_rect = Rect::from_min_size(card_pos + vec2(card_size.x + 2.0, 0.0), card_size);
         Image::new(&tx2).rounding(2.0).paint_at(ui, c2_rect);
+    }
+
+    fn paint_action(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
+        if !matches!(self.action, PlayerAction::None) {
+            let rect = match align.x() {
+                Align::RIGHT => Rect::from_min_size(
+                    rect.left_bottom() + vec2(-(rect.width() + 10.0), 10.0),
+                    vec2(rect.width(), 40.0),
+                ),
+                _ => Rect::from_min_size(
+                    rect.left_bottom() + vec2(rect.width() + 10.0, 10.0),
+                    vec2(rect.width(), 40.0),
+                ),
+            };
+
+            paint_border(ui, &rect);
+
+            let mut action_rect = rect.shrink(1.0);
+            action_rect.set_height(rect.height() / 2.0);
+
+            let rounding = Rounding {
+                nw: 4.0,
+                ne: 4.0,
+                ..Rounding::default()
+            };
+
+            ui.painter()
+                .rect(action_rect, rounding, Self::TEXT_COLOR, Stroke::NONE);
+
+            ui.painter().text(
+                rect.left_top() + vec2(5.0, 3.0),
+                Align2::LEFT_TOP,
+                self.action.label(),
+                FontId::new(13.0, FontFamily::Monospace),
+                Self::BG_COLOR,
+            );
+
+            if self.bet > Chips::ZERO {
+                let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
+                let galley = ui.painter().layout_no_wrap(
+                    self.bet.to_string(),
+                    FontId::new(13.0, FontFamily::Monospace),
+                    Self::TEXT_COLOR,
+                );
+
+                ui.painter()
+                    .galley(amount_rect.left_top(), galley.clone(), Self::TEXT_COLOR);
+            }
+        }
     }
 }
 
@@ -389,6 +442,7 @@ impl GameState {
                 // Prepare for a new hand.
                 for player in &mut self.players {
                     player.cards = PlayerCards::None;
+                    player.action = PlayerAction::None;
                 }
             }
             Message::DealCards(c1, c2) => {

@@ -124,6 +124,15 @@ impl Player {
         let _ = self.table_tx.send(TableMessage::Send(msg)).await;
     }
 
+    /// Reset state for a new hand.
+    fn start_hand(&mut self) {
+        self.is_active = self.chips > Chips::ZERO;
+        self.bet = Chips::ZERO;
+        self.action = PlayerAction::None;
+        self.public_cards = PlayerCards::None;
+        self.hole_cards = PlayerCards::None;
+    }
+
     /// Updates this player bets to the given chips amount.
     fn bet(&mut self, chips: Chips) {
         // How much to bet considering previous bets.
@@ -272,9 +281,7 @@ impl State {
     async fn enter_start_hand(&mut self) {
         // Activate all players who have chips.
         for player in &mut self.players {
-            if player.chips > Chips::ZERO {
-                player.is_active = true;
-            }
+            player.start_hand();
         }
 
         // If there are fewer than 2 active players end the game.
@@ -299,9 +306,11 @@ impl State {
 
         // Pay small and big blind.
         self.players[self.active_player].bet(self.small_blind);
+        self.players[self.active_player].action = PlayerAction::SmallBlind;
 
         self.next_player();
         self.players[self.active_player].bet(self.big_blind);
+        self.players[self.active_player].action = PlayerAction::BigBlind;
 
         self.last_bet = self.big_blind;
 
