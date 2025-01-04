@@ -211,9 +211,9 @@ impl Handler {
 
         // Try to join a table and get a table message channel.
         let player_id = msg.sender();
-        let (table, mut table_rx) = match msg.to_message() {
+        let (table, mut table_rx) = match msg.message() {
             Message::JoinTable(nickname) => {
-                if let Some((table, table_rx)) = self.tables.join(&player_id, &nickname).await {
+                if let Some((table, table_rx)) = self.tables.join(&player_id, nickname).await {
                     (table, table_rx)
                 } else {
                     // Notify the client that there are no tables.

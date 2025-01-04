@@ -396,17 +396,17 @@ struct GameState {
 }
 
 impl GameState {
-    fn handle_message(&mut self, msg: Box<SignedMessage>, app: &mut App) {
-        match msg.to_message() {
+    fn handle_message(&mut self, msg: SignedMessage, app: &mut App) {
+        match msg.message() {
             Message::TableJoined { table_id, chips } => {
-                self.table_id = table_id;
+                self.table_id = *table_id;
                 // Add this player as the first player in the players list.
                 let player_id = app.player_id().clone();
                 self.players.push(Player {
                     player_id_digits: player_id.digits(),
                     player_id,
                     nickname: app.nickname().to_string(),
-                    chips,
+                    chips: *chips,
                     bet: Chips::ZERO,
                     action: PlayerAction::None,
                     cards: PlayerCards::None,
@@ -425,9 +425,9 @@ impl GameState {
             } => {
                 self.players.push(Player {
                     player_id_digits: player_id.digits(),
-                    player_id,
-                    nickname,
-                    chips,
+                    player_id: player_id.clone(),
+                    nickname: nickname.clone(),
+                    chips: *chips,
                     bet: Chips::ZERO,
                     action: PlayerAction::None,
                     cards: PlayerCards::None,
@@ -436,7 +436,7 @@ impl GameState {
                 info!("Added player {:?}", self.players.last().unwrap())
             }
             Message::PlayerLeft(player_id) => {
-                self.players.retain(|p| p.player_id != player_id);
+                self.players.retain(|p| &p.player_id != player_id);
             }
             Message::StartHand => {
                 // Prepare for a new hand.
@@ -450,7 +450,7 @@ impl GameState {
                 assert!(!self.players.is_empty());
                 assert!(&self.players[0].player_id == app.player_id());
 
-                self.players[0].cards = PlayerCards::Cards(c1, c2);
+                self.players[0].cards = PlayerCards::Cards(*c1, *c2);
                 info!(
                     "Player {} received cards {:?}",
                     app.player_id(),
@@ -460,12 +460,12 @@ impl GameState {
             Message::GameUpdate { players } => {
                 self.update_players(players);
             }
-            Message::Error(e) => self.error = Some(e),
+            Message::Error(e) => self.error = Some(e.clone()),
             _ => {}
         }
     }
 
-    fn update_players(&mut self, updates: Vec<PlayerUpdate>) {
+    fn update_players(&mut self, updates: &[PlayerUpdate]) {
         for update in updates {
             if let Some(pos) = self
                 .players

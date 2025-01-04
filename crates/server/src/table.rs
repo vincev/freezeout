@@ -24,7 +24,7 @@ pub struct Table {
 #[derive(Debug)]
 pub enum TableMessage {
     /// Sends a message to a client.
-    Send(Arc<SignedMessage>),
+    Send(SignedMessage),
     /// Close a client connection.
     Close,
 }
@@ -120,7 +120,7 @@ struct Player {
 
 impl Player {
     /// Send a message to this player connection.
-    async fn send(&self, msg: Arc<SignedMessage>) {
+    async fn send(&self, msg: SignedMessage) {
         let _ = self.table_tx.send(TableMessage::Send(msg)).await;
     }
 
@@ -218,8 +218,8 @@ impl State {
             table_id: self.table_id,
             chips: self.join_chips,
         };
-        let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
-        let _ = table_tx.send(TableMessage::Send(smsg.clone())).await;
+        let smsg = SignedMessage::new(&self.sk, msg);
+        let _ = table_tx.send(TableMessage::Send(smsg)).await;
 
         // Send joined message for each player at the table to the new player.
         for player in &self.players {
@@ -228,8 +228,8 @@ impl State {
                 nickname: player.nickname.clone(),
                 chips: player.chips,
             };
-            let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
-            let _ = table_tx.send(TableMessage::Send(smsg.clone())).await;
+            let smsg = SignedMessage::new(&self.sk, msg);
+            let _ = table_tx.send(TableMessage::Send(smsg)).await;
         }
 
         // Add new player to the table.
@@ -338,8 +338,8 @@ impl State {
         for player in &self.players {
             if let PlayerCards::Cards(c1, c2) = player.hole_cards {
                 let msg = Message::DealCards(c1, c2);
-                let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
-                player.send(smsg.clone()).await;
+                let smsg = SignedMessage::new(&self.sk, msg);
+                player.send(smsg).await;
             }
         }
     }
@@ -364,7 +364,7 @@ impl State {
             .collect();
 
         let msg = Message::GameUpdate { players };
-        let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
+        let smsg = SignedMessage::new(&self.sk, msg);
         for player in &self.players {
             player.send(smsg.clone()).await;
         }
@@ -372,7 +372,7 @@ impl State {
 
     /// Broadcast a message to all players at the table.
     async fn broadcast(&self, msg: Message) {
-        let smsg = Arc::new(SignedMessage::new(&self.sk, msg));
+        let smsg = SignedMessage::new(&self.sk, msg);
         for player in &self.players {
             player.send(smsg.clone()).await;
         }

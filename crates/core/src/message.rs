@@ -4,6 +4,7 @@
 //! Type definitions for messages between the client and server.
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::{
     crypto::{PeerId, Signature, SigningKey, VerifyingKey},
@@ -99,8 +100,15 @@ impl PlayerAction {
 }
 
 /// A signed message.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedMessage {
+    /// Clonable payload for broadcasting to multiple connection tasks.
+    payload: Arc<Payload>,
+}
+
+/// Private signed message payload.
+#[derive(Debug, Serialize, Deserialize)]
+struct Payload {
     msg: Message,
     sig: Signature,
     vk: VerifyingKey,
@@ -111,16 +119,18 @@ impl SignedMessage {
     pub fn new(sk: &SigningKey, msg: Message) -> Self {
         let sig = sk.sign(&msg);
         Self {
-            msg,
-            sig,
-            vk: sk.verifying_key(),
+            payload: Arc::new(Payload {
+                msg,
+                sig,
+                vk: sk.verifying_key(),
+            }),
         }
     }
 
     /// Deserializes this message and verifies its signature.
     pub fn deserialize_and_verify(buf: &[u8]) -> Result<Self> {
         let sm = bincode::deserialize::<Self>(buf)?;
-        if !sm.vk.verify(&sm.msg, &sm.sig) {
+        if !sm.payload.vk.verify(&sm.payload.msg, &sm.payload.sig) {
             bail!("Invalid signature");
         }
 
@@ -134,12 +144,12 @@ impl SignedMessage {
 
     /// Returns the identifier of the player who sent this message.
     pub fn sender(&self) -> PeerId {
-        self.vk.peer_id()
+        self.payload.vk.peer_id()
     }
 
     /// Extracts the signed message.
-    pub fn to_message(self) -> Message {
-        self.msg
+    pub fn message(&self) -> &Message {
+        &self.payload.msg
     }
 }
 
@@ -155,9 +165,7 @@ mod tests {
         let smsg = SignedMessage::new(&keypair, message);
         let bytes = smsg.serialize();
 
-        let deser_msg = SignedMessage::deserialize_and_verify(&bytes)
-            .map(|sm| sm.to_message())
-            .unwrap();
-        assert!(matches!(deser_msg, Message::JoinTable(s) if s == "Alice"));
+        let deser_msg = SignedMessage::deserialize_and_verify(&bytes).unwrap();
+        assert!(matches!(deser_msg.message(), Message::JoinTable(s) if s == "Alice"));
     }
 }

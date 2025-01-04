@@ -32,7 +32,7 @@ pub enum ConnectionEvent {
     /// Connection error.
     Error(String),
     /// Connection message.
-    Message(Box<SignedMessage>),
+    Message(SignedMessage),
 }
 
 impl Connection {
@@ -118,7 +118,7 @@ impl Connection {
                                 });
 
                             match res {
-                                Ok(msg) => Some(ConnectionEvent::Message(Box::new(msg))),
+                                Ok(msg) => Some(ConnectionEvent::Message(msg)),
                                 Err(e) => Some(ConnectionEvent::Error(e.to_string())),
                             }
                         } else {

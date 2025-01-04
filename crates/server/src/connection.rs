@@ -155,10 +155,10 @@ mod tests {
             let mut con = accept_async(stream).await.unwrap();
 
             let msg = con.recv().await.unwrap().unwrap();
-            assert!(matches!(msg.to_message(), Message::JoinTable(s) if s == "Bob"));
+            assert!(matches!(msg.message(), Message::JoinTable(s) if s == "Bob"));
 
             let msg = con.recv().await.unwrap().unwrap();
-            assert!(matches!(msg.to_message(), Message::Error(e) if e == "error"));
+            assert!(matches!(msg.message(), Message::Error(e) if e == "error"));
 
             tx.send(()).unwrap();
         });
