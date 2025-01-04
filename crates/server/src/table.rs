@@ -134,7 +134,7 @@ impl Player {
     }
 
     /// Updates this player bets to the given chips amount.
-    fn bet(&mut self, chips: Chips) {
+    fn bet(&mut self, action: PlayerAction, chips: Chips) {
         // How much to bet considering previous bets.
         let remainder = chips - self.bet;
 
@@ -146,6 +146,8 @@ impl Player {
             self.bet += remainder;
             self.chips -= remainder;
         }
+
+        self.action = action;
     }
 }
 
@@ -305,12 +307,10 @@ impl State {
         self.active_player = 0;
 
         // Pay small and big blind.
-        self.players[self.active_player].bet(self.small_blind);
-        self.players[self.active_player].action = PlayerAction::SmallBlind;
+        self.players[self.active_player].bet(PlayerAction::SmallBlind, self.small_blind);
 
         self.next_player();
-        self.players[self.active_player].bet(self.big_blind);
-        self.players[self.active_player].action = PlayerAction::BigBlind;
+        self.players[self.active_player].bet(PlayerAction::BigBlind, self.big_blind);
 
         self.last_bet = self.big_blind;
 
