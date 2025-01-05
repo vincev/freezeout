@@ -100,7 +100,7 @@ impl PlayerAction {
 }
 
 /// A signed message.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SignedMessage {
     /// Clonable payload for broadcasting to multiple connection tasks.
     payload: Arc<Payload>,
@@ -129,7 +129,10 @@ impl SignedMessage {
 
     /// Deserializes this message and verifies its signature.
     pub fn deserialize_and_verify(buf: &[u8]) -> Result<Self> {
-        let sm = bincode::deserialize::<Self>(buf)?;
+        let sm = Self {
+            payload: Arc::new(bincode::deserialize::<Payload>(buf)?),
+        };
+
         if !sm.payload.vk.verify(&sm.payload.msg, &sm.payload.sig) {
             bail!("Invalid signature");
         }
@@ -139,7 +142,7 @@ impl SignedMessage {
 
     /// Serializes this message.
     pub fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("Should serialize signed message")
+        bincode::serialize(self.payload.as_ref()).expect("Should serialize signed message")
     }
 
     /// Returns the identifier of the player who sent this message.

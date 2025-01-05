@@ -54,18 +54,6 @@ struct Server {
 #[derive(Debug)]
 struct TablesSet(Vec<Arc<Table>>);
 
-/// Client connection handler.
-struct Handler {
-    /// The tables on this server.
-    tables: Arc<TablesSet>,
-    /// The server signing key shared by all connections.
-    sk: Arc<SigningKey>,
-    /// Channel for listening shutdown notification.
-    shutdown_broadcast_rx: broadcast::Receiver<()>,
-    /// Sender that drops when this connection is done.
-    _shutdown_complete_tx: mpsc::Sender<()>,
-}
-
 /// Server entry point.
 pub async fn run(config: Config) -> Result<()> {
     let addr = format!("{}:{}", config.address, config.port);
@@ -81,8 +69,16 @@ pub async fn run(config: Config) -> Result<()> {
 
     let sk = Arc::new(SigningKey::default());
 
+    let tables = Arc::new(TablesSet::new(
+        config.tables,
+        config.seats,
+        sk.clone(),
+        &shutdown_broadcast_tx,
+        &shutdown_complete_tx,
+    ));
+
     let mut server = Server {
-        tables: Arc::new(TablesSet::new(config.tables, config.seats, sk.clone())),
+        tables,
         sk,
         listener,
         shutdown_broadcast_tx,
@@ -162,10 +158,23 @@ impl Server {
 
 impl TablesSet {
     /// Creates a new table set.
-    fn new(tables: usize, seats: usize, sk: Arc<SigningKey>) -> Self {
+    fn new(
+        tables: usize,
+        seats: usize,
+        sk: Arc<SigningKey>,
+        shutdown_broadcast_tx: &broadcast::Sender<()>,
+        shutdown_complete_tx: &mpsc::Sender<()>,
+    ) -> Self {
         Self(
             (0..tables)
-                .map(|_| Arc::new(Table::new(seats, sk.clone())))
+                .map(|_| {
+                    Arc::new(Table::new(
+                        seats,
+                        sk.clone(),
+                        shutdown_broadcast_tx.subscribe(),
+                        shutdown_complete_tx.clone(),
+                    ))
+                })
                 .collect(),
         )
     }
@@ -184,6 +193,18 @@ impl TablesSet {
 
         None
     }
+}
+
+/// Client connection handler.
+struct Handler {
+    /// The tables on this server.
+    tables: Arc<TablesSet>,
+    /// The server signing key shared by all connections.
+    sk: Arc<SigningKey>,
+    /// Channel for listening shutdown notification.
+    shutdown_broadcast_rx: broadcast::Receiver<()>,
+    /// Sender that drops when this connection is done.
+    _shutdown_complete_tx: mpsc::Sender<()>,
 }
 
 impl Handler {
