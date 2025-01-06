@@ -461,6 +461,9 @@ impl GameState {
                 self.update_players(players);
             }
             Message::Error(e) => self.error = Some(e.clone()),
+            Message::RequestAction(peer_id) => {
+                info!("Player {} request action", peer_id);
+            }
             _ => {}
         }
     }

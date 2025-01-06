@@ -336,7 +336,7 @@ impl State {
 
         self.players.push(player);
 
-        info!("Player {player_id} joined the table.");
+        info!("Player {player_id} joined table {}", self.table_id);
 
         if self.players.len() == self.seats {
             self.enter_start_hand().await;
@@ -359,7 +359,24 @@ impl State {
 
             if self.players.is_empty() {
                 self.hand_state = HandState::WaitForPlayers;
+            } else if self.players.len() == 1 {
+                // If one player left the hand ends and the player wins the game.
+                self.active_player = 0;
+                self.enter_end_game().await;
+            } else if pos < self.active_player {
+                // Adjust active player if the player leaving acts before.
+                self.active_player -= 1;
+            } else if pos == self.active_player {
+                // If the active player was the last activate first player otherwise
+                // activate the player that moved in the same position.
+                if pos == self.players.len() {
+                    self.active_player = 0;
+                }
+
+                self.request_action().await;
             }
+
+            // Nothing to do if the player leaving comes after the active player.
         }
     }
 
@@ -431,6 +448,10 @@ impl State {
                 player.send(smsg).await;
             }
         }
+
+        // Activate next player and request action.
+        self.next_player();
+        self.request_action().await;
     }
 
     async fn enter_end_game(&mut self) {
@@ -459,6 +480,14 @@ impl State {
         }
     }
 
+    /// Request action to the active player.
+    async fn request_action(&self) {
+        if self.count_active() > 1 {
+            let player_id = self.players[self.active_player].player_id.clone();
+            self.broadcast(Message::RequestAction(player_id)).await;
+        }
+    }
+
     /// Broadcast a message to all players at the table.
     async fn broadcast(&self, msg: Message) {
         let smsg = SignedMessage::new(&self.sk, msg);
@@ -480,15 +509,5 @@ impl State {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_size() {
-        println!("{}", std::mem::size_of::<TableMessage>());
     }
 }

@@ -43,6 +43,8 @@ pub enum Message {
         /// The players update.
         players: Vec<PlayerUpdate>,
     },
+    /// Request action from a player.
+    RequestAction(PeerId),
     /// An error message.
     Error(String),
 }
