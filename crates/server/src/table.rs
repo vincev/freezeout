@@ -254,6 +254,7 @@ struct State {
     deck: Deck,
     active_player: usize,
     last_bet: Chips,
+    min_raise: Chips,
 }
 
 impl State {
@@ -271,6 +272,7 @@ impl State {
             deck: Deck::new_and_shuffled(),
             active_player: 0,
             last_bet: Chips::ZERO,
+            min_raise: Chips::ZERO,
         }
     }
 
@@ -419,6 +421,7 @@ impl State {
         self.players[self.active_player].bet(PlayerAction::BigBlind, self.big_blind);
 
         self.last_bet = self.big_blind;
+        self.min_raise = self.big_blind;
 
         // Create a new deck.
         self.deck = Deck::new_and_shuffled();
@@ -483,8 +486,32 @@ impl State {
     /// Request action to the active player.
     async fn request_action(&self) {
         if self.count_active() > 1 {
-            let player_id = self.players[self.active_player].player_id.clone();
-            self.broadcast(Message::RequestAction(player_id)).await;
+            let player = &self.players[self.active_player];
+            let mut actions = vec![PlayerAction::Fold];
+
+            if self.last_bet == Chips::ZERO {
+                actions.push(PlayerAction::Bet);
+            }
+
+            if player.bet == self.last_bet {
+                actions.push(PlayerAction::Check);
+            }
+
+            if player.bet < self.last_bet {
+                actions.push(PlayerAction::Call);
+            }
+
+            if player.chips >= self.last_bet && self.last_bet > Chips::ZERO {
+                actions.push(PlayerAction::Raise);
+            }
+
+            let msg = Message::RequestAction {
+                player_id: player.player_id.clone(),
+                min_raise: self.min_raise,
+                actions,
+            };
+
+            self.broadcast(msg).await;
         }
     }
 

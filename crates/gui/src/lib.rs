@@ -13,6 +13,9 @@ pub use connect_view::ConnectView;
 pub mod connection;
 pub use connection::{Connection, ConnectionEvent};
 
+pub mod game_state;
+pub use game_state::{GameState, Player};
+
 pub mod game_view;
 pub use game_view::GameView;
 

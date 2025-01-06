@@ -3,21 +3,69 @@
 
 //! Game view.
 use eframe::egui::*;
-use log::{error, info};
+use log::error;
 
 use freezeout_core::{
-    crypto::PeerId,
-    message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
-    poker::{Chips, PlayerCards, TableId},
+    message::PlayerAction,
+    poker::{Chips, PlayerCards},
 };
 
-use crate::{App, ConnectView, ConnectionEvent, Textures, View};
+use crate::{App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
 
 /// Connect view.
 pub struct GameView {
     connection_closed: bool,
     game_state: GameState,
     textures: Textures,
+    error: Option<String>,
+}
+
+impl View for GameView {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame, app: &mut App) {
+        while let Some(event) = app.poll_network() {
+            match event {
+                ConnectionEvent::Open => {
+                    self.connection_closed = false;
+                }
+                ConnectionEvent::Close => {
+                    self.connection_closed = true;
+                }
+                ConnectionEvent::Error(e) => {
+                    self.error = Some(format!("Connection error {e}"));
+                    error!("Connection error {e}");
+                }
+                ConnectionEvent::Message(msg) => {
+                    self.game_state.handle_message(msg, app);
+                }
+            }
+        }
+
+        Window::new("Freezeout Poker")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+            .title_bar(false)
+            .frame(Frame::none().fill(Color32::from_gray(80)).rounding(7.0))
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(vec2(1024.0, 640.0), Sense::hover());
+                let table_rect = Rect::from_center_size(rect.center(), rect.shrink(60.0).size());
+                self.paint_table(ui, &table_rect);
+                self.paint_players(ui, &rect);
+            });
+    }
+
+    fn next(
+        &mut self,
+        _ctx: &Context,
+        frame: &mut eframe::Frame,
+        app: &mut App,
+    ) -> Option<Box<dyn View>> {
+        if self.connection_closed {
+            Some(Box::new(ConnectView::new(frame.storage(), app)))
+        } else {
+            None
+        }
+    }
 }
 
 impl GameView {
@@ -27,12 +75,9 @@ impl GameView {
 
         Self {
             connection_closed: false,
-            game_state: GameState {
-                table_id: TableId::NO_TABLE,
-                players: Vec::default(),
-                error: None,
-            },
+            game_state: GameState::default(),
             textures: Textures::new(ctx),
+            error: None,
         }
     }
 
@@ -93,7 +138,7 @@ impl GameView {
 
     fn paint_players(&self, ui: &mut Ui, rect: &Rect) {
         // Seats starting from mid bottom clock wise each point is a player center.
-        let seats: &[Align2] = match self.game_state.players.len() {
+        let seats: &[Align2] = match self.game_state.players().len() {
             1 => &[Align2::CENTER_BOTTOM],
             2 => &[Align2::CENTER_BOTTOM, Align2::CENTER_TOP],
             3 => &[Align2::CENTER_BOTTOM, Align2::LEFT_TOP, Align2::RIGHT_TOP],
@@ -120,84 +165,27 @@ impl GameView {
             ],
         };
 
-        for (player, align) in self.game_state.players.iter().zip(seats) {
-            player.paint(ui, rect, align, &self.textures);
+        for (player, align) in self.game_state.players().iter().zip(seats) {
+            PlayerView::new(player).paint(ui, rect, align, &self.textures);
         }
     }
 }
 
-impl View for GameView {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame, app: &mut App) {
-        while let Some(event) = app.poll_network() {
-            match event {
-                ConnectionEvent::Open => {
-                    self.connection_closed = false;
-                }
-                ConnectionEvent::Close => {
-                    self.connection_closed = true;
-                }
-                ConnectionEvent::Error(e) => {
-                    self.game_state.error = Some(format!("Connection error {e}"));
-                    error!("Connection error {e}");
-                }
-                ConnectionEvent::Message(msg) => {
-                    self.game_state.handle_message(msg, app);
-                }
-            }
-        }
-
-        Window::new("Freezeout Poker")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-            .title_bar(false)
-            .frame(Frame::none().fill(Color32::from_gray(80)).rounding(7.0))
-            .show(ctx, |ui| {
-                let (rect, _) = ui.allocate_exact_size(vec2(1024.0, 640.0), Sense::hover());
-                let table_rect = Rect::from_center_size(rect.center(), rect.shrink(60.0).size());
-                self.paint_table(ui, &table_rect);
-                self.paint_players(ui, &rect);
-            });
-    }
-
-    fn next(
-        &mut self,
-        _ctx: &Context,
-        frame: &mut eframe::Frame,
-        app: &mut App,
-    ) -> Option<Box<dyn View>> {
-        if self.connection_closed {
-            Some(Box::new(ConnectView::new(frame.storage(), app)))
-        } else {
-            None
-        }
-    }
+struct PlayerView<'a> {
+    player: &'a Player,
 }
 
-/// Game player data.
-#[derive(Debug)]
-struct Player {
-    /// This player id.
-    player_id: PeerId,
-    // Cache player id digits to avoid generation at every repaint.
-    player_id_digits: String,
-    /// This player nickname.
-    nickname: String,
-    /// This player chips.
-    chips: Chips,
-    /// The last player bet.
-    bet: Chips,
-    /// The last player action.
-    action: PlayerAction,
-    /// This playe cards.
-    cards: PlayerCards,
-}
-
-impl Player {
+impl<'a> PlayerView<'a> {
     const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
     const BG_COLOR: Color32 = Color32::from_gray(20);
 
-    fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
+    /// Creates a new view.
+    fn new(player: &'a Player) -> Self {
+        Self { player }
+    }
+
+    /// Paints this player.
+    pub fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
         const PLAYER_SIZE: Vec2 = vec2(120.0, 160.0);
 
         let rect = rect.shrink(20.0);
@@ -235,7 +223,7 @@ impl Player {
         let layout_job = text::LayoutJob {
             wrap: text::TextWrapping::wrap_at_width(75.0),
             ..text::LayoutJob::single_section(
-                self.player_id_digits.clone(),
+                self.player.player_id_digits.clone(),
                 TextFormat {
                     font_id: FontId::new(13.0, FontFamily::Monospace),
                     extra_letter_spacing: 1.0,
@@ -280,7 +268,7 @@ impl Player {
 
         let galley =
             ui.painter()
-                .layout_no_wrap(self.nickname.to_string(), font.clone(), text_color);
+                .layout_no_wrap(self.player.nickname.to_string(), font.clone(), text_color);
 
         painter.galley(
             bg_rect.left_top() + vec2(5.0, 4.0),
@@ -292,13 +280,13 @@ impl Player {
 
         let galley = ui
             .painter()
-            .layout_no_wrap(self.chips.to_string(), font, text_color);
+            .layout_no_wrap(self.player.chips.to_string(), font, text_color);
 
         painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), text_color);
     }
 
     fn paint_cards(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
-        let (tx1, tx2) = match self.cards {
+        let (tx1, tx2) = match self.player.cards {
             PlayerCards::None => return,
             PlayerCards::Covered => (textures.back(), textures.back()),
             PlayerCards::Cards(c1, c2) => (textures.card(c1), textures.card(c2)),
@@ -327,7 +315,7 @@ impl Player {
     }
 
     fn paint_action(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
-        if !matches!(self.action, PlayerAction::None) {
+        if !matches!(self.player.action, PlayerAction::None) {
             let rect = match align.x() {
                 Align::RIGHT => Rect::from_min_size(
                     rect.left_bottom() + vec2(-(rect.width() + 10.0), 10.0),
@@ -356,15 +344,15 @@ impl Player {
             ui.painter().text(
                 rect.left_top() + vec2(5.0, 3.0),
                 Align2::LEFT_TOP,
-                self.action.label(),
+                self.player.action.label(),
                 FontId::new(13.0, FontFamily::Monospace),
                 Self::BG_COLOR,
             );
 
-            if self.bet > Chips::ZERO {
+            if self.player.bet > Chips::ZERO {
                 let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
                 let galley = ui.painter().layout_no_wrap(
-                    self.bet.to_string(),
+                    self.player.bet.to_string(),
                     FontId::new(13.0, FontFamily::Monospace),
                     Self::TEXT_COLOR,
                 );
@@ -384,110 +372,5 @@ fn paint_border(ui: &mut Ui, rect: &Rect) {
         let border_rect = rect.expand(idx as f32);
         let stroke = Stroke::new(1.0, Color32::from_gray(color as u8));
         ui.painter().rect_stroke(border_rect, 5.0, stroke);
-    }
-}
-
-/// This client game state.
-#[derive(Debug)]
-struct GameState {
-    table_id: TableId,
-    players: Vec<Player>,
-    error: Option<String>,
-}
-
-impl GameState {
-    fn handle_message(&mut self, msg: SignedMessage, app: &mut App) {
-        match msg.message() {
-            Message::TableJoined { table_id, chips } => {
-                self.table_id = *table_id;
-                // Add this player as the first player in the players list.
-                let player_id = app.player_id().clone();
-                self.players.push(Player {
-                    player_id_digits: player_id.digits(),
-                    player_id,
-                    nickname: app.nickname().to_string(),
-                    chips: *chips,
-                    bet: Chips::ZERO,
-                    action: PlayerAction::None,
-                    cards: PlayerCards::None,
-                });
-
-                info!(
-                    "Joined table {} {:?}",
-                    table_id,
-                    self.players.last().unwrap()
-                )
-            }
-            Message::PlayerJoined {
-                player_id,
-                nickname,
-                chips,
-            } => {
-                self.players.push(Player {
-                    player_id_digits: player_id.digits(),
-                    player_id: player_id.clone(),
-                    nickname: nickname.clone(),
-                    chips: *chips,
-                    bet: Chips::ZERO,
-                    action: PlayerAction::None,
-                    cards: PlayerCards::None,
-                });
-
-                info!("Added player {:?}", self.players.last().unwrap())
-            }
-            Message::PlayerLeft(player_id) => {
-                self.players.retain(|p| &p.player_id != player_id);
-            }
-            Message::StartHand => {
-                // Prepare for a new hand.
-                for player in &mut self.players {
-                    player.cards = PlayerCards::None;
-                    player.action = PlayerAction::None;
-                }
-            }
-            Message::DealCards(c1, c2) => {
-                // This client player should be in first position.
-                assert!(!self.players.is_empty());
-                assert!(&self.players[0].player_id == app.player_id());
-
-                self.players[0].cards = PlayerCards::Cards(*c1, *c2);
-                info!(
-                    "Player {} received cards {:?}",
-                    app.player_id(),
-                    self.players[0].cards
-                );
-            }
-            Message::GameUpdate { players } => {
-                self.update_players(players);
-            }
-            Message::Error(e) => self.error = Some(e.clone()),
-            Message::RequestAction(peer_id) => {
-                info!("Player {} request action", peer_id);
-            }
-            _ => {}
-        }
-    }
-
-    fn update_players(&mut self, updates: &[PlayerUpdate]) {
-        for update in updates {
-            if let Some(pos) = self
-                .players
-                .iter_mut()
-                .position(|p| p.player_id == update.player_id)
-            {
-                let player = &mut self.players[pos];
-                player.chips = update.chips;
-                player.bet = update.bet;
-                player.action = update.action;
-
-                // Do not override cards for local player as these are assigned at
-                // players cards dealing.
-                if pos != 0 {
-                    player.cards = update.cards;
-                }
-
-                info!("Updated player {player:?}");
-            }
-        }
     }
 }
