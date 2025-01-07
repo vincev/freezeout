@@ -44,13 +44,20 @@ pub enum Message {
         players: Vec<PlayerUpdate>,
     },
     /// Request action from a player.
-    RequestAction {
+    ActionRequest {
         /// The player that should respond with an action.
         player_id: PeerId,
         /// The minimum raise.
         min_raise: Chips,
         /// The list of legal actions.
         actions: Vec<PlayerAction>,
+    },
+    /// Player action response.
+    ActionResponse {
+        /// The action from the player.
+        action: PlayerAction,
+        /// The amount for this action (only used for bet and raise actions)
+        amount: Chips,
     },
     /// An error message.
     Error(String),

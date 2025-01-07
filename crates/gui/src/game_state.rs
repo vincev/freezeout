@@ -31,14 +31,22 @@ pub struct Player {
     pub cards: PlayerCards,
 }
 
+/// A player action request from the server.
+#[derive(Debug)]
+pub struct ActionRequest {
+    /// The actions choices requested by server.
+    pub actions: Vec<PlayerAction>,
+    /// The action minimum raise
+    pub min_raise: Chips,
+}
+
 /// This client game state.
 #[derive(Debug)]
 pub struct GameState {
     table_id: TableId,
     error: Option<String>,
     players: Vec<Player>,
-    actions_req: Vec<PlayerAction>,
-    min_raise: Chips,
+    action_request: Option<ActionRequest>,
 }
 
 impl Default for GameState {
@@ -47,8 +55,7 @@ impl Default for GameState {
             table_id: TableId::NO_TABLE,
             error: None,
             players: Vec::default(),
-            actions_req: Vec::default(),
-            min_raise: Chips::ZERO,
+            action_request: None,
         }
     }
 }
@@ -103,9 +110,6 @@ impl GameState {
                     player.cards = PlayerCards::None;
                     player.action = PlayerAction::None;
                 }
-
-                self.actions_req.clear();
-                self.min_raise = Chips::ZERO;
             }
             Message::DealCards(c1, c2) => {
                 // This client player should be in first position.
@@ -123,7 +127,7 @@ impl GameState {
                 self.update_players(players);
             }
             Message::Error(e) => self.error = Some(e.clone()),
-            Message::RequestAction {
+            Message::ActionRequest {
                 player_id,
                 min_raise,
                 actions,
@@ -134,12 +138,19 @@ impl GameState {
                         "Player {} request action: {} {:?}",
                         player_id, min_raise, actions
                     );
-                    self.min_raise = *min_raise;
-                    self.actions_req = actions.clone();
+                    self.action_request = Some(ActionRequest {
+                        actions: actions.clone(),
+                        min_raise: *min_raise,
+                    });
                 }
             }
             _ => {}
         }
+    }
+
+    /// Returns the requested player action if any.
+    pub fn take_action_request(&mut self) -> Option<ActionRequest> {
+        self.action_request.take()
     }
 
     /// Returns a reference to the players.

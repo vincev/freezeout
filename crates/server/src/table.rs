@@ -385,6 +385,21 @@ impl State {
     /// Handle a message from a player.
     async fn message(&mut self, msg: SignedMessage) {
         info!("Player message: {msg:?}");
+        match msg.message() {
+            Message::ActionResponse {
+                action: _,
+                amount: _,
+            } => {
+                let player = &self.players[self.active_player];
+                // Only process responses coming from active player.
+                if player.player_id == msg.sender() {
+                    self.next_player();
+                    self.request_action().await;
+                }
+            }
+            Message::Error(e) => error!("Error {e}"),
+            _ => {}
+        }
     }
 
     /// Start a new hand.
@@ -489,10 +504,6 @@ impl State {
             let player = &self.players[self.active_player];
             let mut actions = vec![PlayerAction::Fold];
 
-            if self.last_bet == Chips::ZERO {
-                actions.push(PlayerAction::Bet);
-            }
-
             if player.bet == self.last_bet {
                 actions.push(PlayerAction::Check);
             }
@@ -501,11 +512,15 @@ impl State {
                 actions.push(PlayerAction::Call);
             }
 
+            if self.last_bet == Chips::ZERO {
+                actions.push(PlayerAction::Bet);
+            }
+
             if player.chips >= self.last_bet && self.last_bet > Chips::ZERO {
                 actions.push(PlayerAction::Raise);
             }
 
-            let msg = Message::RequestAction {
+            let msg = Message::ActionRequest {
                 player_id: player.player_id.clone(),
                 min_raise: self.min_raise,
                 actions,

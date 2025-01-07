@@ -3,21 +3,21 @@
 
 //! Game view.
 use eframe::egui::*;
-use log::error;
+use log::{error, info};
 
 use freezeout_core::{
-    message::PlayerAction,
+    message::{Message, PlayerAction},
     poker::{Chips, PlayerCards},
 };
 
-use crate::{App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
+use crate::{ActionRequest, App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
 
 /// Connect view.
 pub struct GameView {
     connection_closed: bool,
     game_state: GameState,
-    textures: Textures,
     error: Option<String>,
+    action_request: Option<ActionRequest>,
 }
 
 impl View for GameView {
@@ -36,6 +36,7 @@ impl View for GameView {
                 }
                 ConnectionEvent::Message(msg) => {
                     self.game_state.handle_message(msg, app);
+                    self.action_request = self.game_state.take_action_request();
                 }
             }
         }
@@ -50,7 +51,7 @@ impl View for GameView {
                 let (rect, _) = ui.allocate_exact_size(vec2(1024.0, 640.0), Sense::hover());
                 let table_rect = Rect::from_center_size(rect.center(), rect.shrink(60.0).size());
                 self.paint_table(ui, &table_rect);
-                self.paint_players(ui, &rect);
+                self.paint_players(ui, &rect, app);
             });
     }
 
@@ -69,6 +70,9 @@ impl View for GameView {
 }
 
 impl GameView {
+    const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
+    const BG_COLOR: Color32 = Color32::from_gray(20);
+
     /// Creates a new [GameView].
     pub fn new(ctx: &Context) -> Self {
         ctx.request_repaint();
@@ -76,8 +80,8 @@ impl GameView {
         Self {
             connection_closed: false,
             game_state: GameState::default(),
-            textures: Textures::new(ctx),
             error: None,
+            action_request: None,
         }
     }
 
@@ -136,7 +140,7 @@ impl GameView {
         paint_oval(ui, &rect.shrink(164.0), inner);
     }
 
-    fn paint_players(&self, ui: &mut Ui, rect: &Rect) {
+    fn paint_players(&mut self, ui: &mut Ui, rect: &Rect, app: &mut App) {
         // Seats starting from mid bottom clock wise each point is a player center.
         let seats: &[Align2] = match self.game_state.players().len() {
             1 => &[Align2::CENTER_BOTTOM],
@@ -166,64 +170,34 @@ impl GameView {
         };
 
         for (player, align) in self.game_state.players().iter().zip(seats) {
-            PlayerView::new(player).paint(ui, rect, align, &self.textures);
+            self.paint_player(player, ui, rect, align, app);
         }
-    }
-}
 
-struct PlayerView<'a> {
-    player: &'a Player,
-}
-
-impl<'a> PlayerView<'a> {
-    const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
-    const BG_COLOR: Color32 = Color32::from_gray(20);
-
-    /// Creates a new view.
-    fn new(player: &'a Player) -> Self {
-        Self { player }
+        self.paint_action_controls(ui, rect, app);
     }
 
-    /// Paints this player.
-    pub fn paint(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
-        const PLAYER_SIZE: Vec2 = vec2(120.0, 160.0);
-
-        let rect = rect.shrink(20.0);
-        let x = match align.x() {
-            Align::LEFT => rect.left(),
-            Align::Center => rect.center().x - PLAYER_SIZE.x / 2.0,
-            Align::RIGHT => rect.right() - PLAYER_SIZE.x,
-        };
-
-        let y = match (align.x(), align.y()) {
-            (Align::LEFT, Align::TOP) | (Align::RIGHT, Align::TOP) => {
-                rect.top() + rect.height() / 4.0 - PLAYER_SIZE.y / 2.0
-            }
-            (Align::LEFT, Align::BOTTOM) | (Align::RIGHT, Align::BOTTOM) => {
-                rect.bottom() - rect.height() / 4.0 - PLAYER_SIZE.y / 2.0
-            }
-            (Align::LEFT, Align::Center) | (Align::RIGHT, Align::Center) => {
-                rect.bottom() - rect.height() / 2.0 - PLAYER_SIZE.y / 2.0
-            }
-            (Align::Center, Align::TOP) => rect.top(),
-            (Align::Center, Align::BOTTOM) => rect.bottom() - PLAYER_SIZE.y,
-            _ => unreachable!(),
-        };
-
-        let rect = Rect::from_min_size(pos2(x, y), PLAYER_SIZE);
-        let id_rect = self.paint_id(ui, &rect, align);
-        self.paint_name_and_chips(ui, &id_rect);
-        self.paint_cards(ui, &id_rect, align, textures);
-        self.paint_action(ui, &id_rect, align);
+    fn paint_player(
+        &self,
+        player: &Player,
+        ui: &mut Ui,
+        rect: &Rect,
+        align: &Align2,
+        app: &mut App,
+    ) {
+        let rect = player_rect(rect, align);
+        let id_rect = self.paint_player_id(player, ui, &rect, align);
+        self.paint_player_name_and_chips(player, ui, &id_rect);
+        self.paint_player_cards(player, ui, &id_rect, align, &app.textures);
+        self.paint_player_action(player, ui, &id_rect, align);
     }
 
-    fn paint_id(&self, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
-        let rect = rect.shrink(10.0);
+    fn paint_player_id(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
+        let rect = rect.shrink(5.0);
 
         let layout_job = text::LayoutJob {
             wrap: text::TextWrapping::wrap_at_width(75.0),
             ..text::LayoutJob::single_section(
-                self.player.player_id_digits.clone(),
+                player.player_id_digits.clone(),
                 TextFormat {
                     font_id: FontId::new(13.0, FontFamily::Monospace),
                     extra_letter_spacing: 1.0,
@@ -253,7 +227,7 @@ impl<'a> PlayerView<'a> {
         bg_rect
     }
 
-    fn paint_name_and_chips(&self, ui: &mut Ui, rect: &Rect) {
+    fn paint_player_name_and_chips(&self, player: &Player, ui: &mut Ui, rect: &Rect) {
         let bg_rect = Rect::from_min_size(
             rect.left_bottom() + vec2(0.0, 10.0),
             vec2(rect.width(), 40.0),
@@ -268,7 +242,7 @@ impl<'a> PlayerView<'a> {
 
         let galley =
             ui.painter()
-                .layout_no_wrap(self.player.nickname.to_string(), font.clone(), text_color);
+                .layout_no_wrap(player.nickname.to_string(), font.clone(), text_color);
 
         painter.galley(
             bg_rect.left_top() + vec2(5.0, 4.0),
@@ -280,13 +254,20 @@ impl<'a> PlayerView<'a> {
 
         let galley = ui
             .painter()
-            .layout_no_wrap(self.player.chips.to_string(), font, text_color);
+            .layout_no_wrap(player.chips.to_string(), font, text_color);
 
         painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), text_color);
     }
 
-    fn paint_cards(&self, ui: &mut Ui, rect: &Rect, align: &Align2, textures: &Textures) {
-        let (tx1, tx2) = match self.player.cards {
+    fn paint_player_cards(
+        &self,
+        player: &Player,
+        ui: &mut Ui,
+        rect: &Rect,
+        align: &Align2,
+        textures: &Textures,
+    ) {
+        let (tx1, tx2) = match player.cards {
             PlayerCards::None => return,
             PlayerCards::Covered => (textures.back(), textures.back()),
             PlayerCards::Cards(c1, c2) => (textures.card(c1), textures.card(c2)),
@@ -314,8 +295,8 @@ impl<'a> PlayerView<'a> {
         Image::new(&tx2).rounding(2.0).paint_at(ui, c2_rect);
     }
 
-    fn paint_action(&self, ui: &mut Ui, rect: &Rect, align: &Align2) {
-        if !matches!(self.player.action, PlayerAction::None) {
+    fn paint_player_action(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) {
+        if !matches!(player.action, PlayerAction::None) {
             let rect = match align.x() {
                 Align::RIGHT => Rect::from_min_size(
                     rect.left_bottom() + vec2(-(rect.width() + 10.0), 10.0),
@@ -344,15 +325,15 @@ impl<'a> PlayerView<'a> {
             ui.painter().text(
                 rect.left_top() + vec2(5.0, 3.0),
                 Align2::LEFT_TOP,
-                self.player.action.label(),
+                player.action.label(),
                 FontId::new(13.0, FontFamily::Monospace),
                 Self::BG_COLOR,
             );
 
-            if self.player.bet > Chips::ZERO {
+            if player.bet > Chips::ZERO {
                 let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
                 let galley = ui.painter().layout_no_wrap(
-                    self.player.bet.to_string(),
+                    player.bet.to_string(),
                     FontId::new(13.0, FontFamily::Monospace),
                     Self::TEXT_COLOR,
                 );
@@ -361,6 +342,53 @@ impl<'a> PlayerView<'a> {
                     .galley(amount_rect.left_top(), galley.clone(), Self::TEXT_COLOR);
             }
         }
+    }
+
+    fn paint_action_controls(&mut self, ui: &mut Ui, rect: &Rect, app: &mut App) {
+        const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
+        const BUTTON_LX: f32 = 81.0;
+        const BUTTON_LY: f32 = 35.0;
+
+        if let Some(req) = &self.action_request {
+            let rect = player_rect(rect, &Align2::CENTER_BOTTOM);
+
+            let mut btn_rect = Rect::from_min_size(
+                rect.left_top() + vec2(0.0, 130.0),
+                vec2(BUTTON_LX, BUTTON_LY),
+            );
+
+            for action in &req.actions {
+                paint_border(ui, &btn_rect);
+
+                let btn = Button::new(
+                    RichText::new(action.label())
+                        .font(TEXT_FONT)
+                        .color(Self::TEXT_COLOR),
+                )
+                .fill(Self::BG_COLOR);
+
+                if ui.put(btn_rect.shrink(2.0), btn).clicked() {
+                    match action {
+                        PlayerAction::Fold | PlayerAction::Check | PlayerAction::Call => {
+                            self.send_action(*action, Chips::ZERO, app);
+                            break;
+                        }
+                        PlayerAction::Bet => info!("Bet"),
+                        PlayerAction::Raise => info!("Raise"),
+                        _ => {}
+                    }
+                }
+
+                btn_rect = btn_rect.translate(vec2(BUTTON_LX + 10.0, 0.0));
+            }
+        }
+    }
+
+    fn send_action(&mut self, action: PlayerAction, amount: Chips, app: &mut App) {
+        let msg = Message::ActionResponse { action, amount };
+
+        app.send_message(msg);
+        self.action_request = None;
     }
 }
 
@@ -373,4 +401,32 @@ fn paint_border(ui: &mut Ui, rect: &Rect) {
         let stroke = Stroke::new(1.0, Color32::from_gray(color as u8));
         ui.painter().rect_stroke(border_rect, 5.0, stroke);
     }
+}
+
+fn player_rect(rect: &Rect, align: &Align2) -> Rect {
+    const PLAYER_SIZE: Vec2 = vec2(120.0, 160.0);
+
+    let rect = rect.shrink(20.0);
+    let x = match align.x() {
+        Align::LEFT => rect.left(),
+        Align::Center => rect.center().x - PLAYER_SIZE.x / 1.5,
+        Align::RIGHT => rect.right() - PLAYER_SIZE.x,
+    };
+
+    let y = match (align.x(), align.y()) {
+        (Align::LEFT, Align::TOP) | (Align::RIGHT, Align::TOP) => {
+            rect.top() + rect.height() / 4.0 - PLAYER_SIZE.y / 2.0
+        }
+        (Align::LEFT, Align::BOTTOM) | (Align::RIGHT, Align::BOTTOM) => {
+            rect.bottom() - rect.height() / 4.0 - PLAYER_SIZE.y / 2.0
+        }
+        (Align::LEFT, Align::Center) | (Align::RIGHT, Align::Center) => {
+            rect.bottom() - rect.height() / 2.0 - PLAYER_SIZE.y / 2.0
+        }
+        (Align::Center, Align::TOP) => rect.top(),
+        (Align::Center, Align::BOTTOM) => rect.bottom() - PLAYER_SIZE.y,
+        _ => unreachable!(),
+    };
+
+    Rect::from_min_size(pos2(x, y), PLAYER_SIZE)
 }

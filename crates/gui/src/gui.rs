@@ -10,7 +10,7 @@ use freezeout_core::{
     message::{Message, SignedMessage},
 };
 
-use crate::{ConnectView, Connection, ConnectionEvent};
+use crate::{ConnectView, Connection, ConnectionEvent, Textures};
 
 /// App configuration parameters.
 #[derive(Debug)]
@@ -25,6 +25,8 @@ pub struct Config {
 pub struct App {
     /// The application configuration.
     pub config: Config,
+    /// The app textures.
+    pub textures: Textures,
     /// The application message signing key.
     sk: SigningKey,
     /// This client player id.
@@ -56,10 +58,11 @@ pub struct AppFrame {
 }
 
 impl App {
-    fn new(config: Config) -> Self {
+    fn new(config: Config, textures: Textures) -> Self {
         let sk = SigningKey::default();
         Self {
             config,
+            textures,
             player_id: sk.verifying_key().peer_id(),
             sk,
             nickname: String::default(),
@@ -149,7 +152,7 @@ impl AppFrame {
         cc.egui_ctx.set_theme(Theme::Dark);
 
         log::info!("Creating new app with config: {config:?}");
-        let app = App::new(config);
+        let app = App::new(config, Textures::new(&cc.egui_ctx));
         let panel = Box::new(ConnectView::new(cc.storage, &app));
 
         AppFrame { app, panel }
