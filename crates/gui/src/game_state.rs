@@ -38,6 +38,8 @@ pub struct ActionRequest {
     pub actions: Vec<PlayerAction>,
     /// The action minimum raise
     pub min_raise: Chips,
+    /// The hand big blind.
+    pub big_blind: Chips,
 }
 
 /// This client game state.
@@ -130,6 +132,7 @@ impl GameState {
             Message::ActionRequest {
                 player_id,
                 min_raise,
+                big_blind,
                 actions,
             } => {
                 // Check if the action has been requested for this player.
@@ -141,6 +144,7 @@ impl GameState {
                     self.action_request = Some(ActionRequest {
                         actions: actions.clone(),
                         min_raise: *min_raise,
+                        big_blind: *big_blind,
                     });
                 }
             }

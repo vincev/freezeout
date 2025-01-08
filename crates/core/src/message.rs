@@ -49,6 +49,8 @@ pub enum Message {
         player_id: PeerId,
         /// The minimum raise.
         min_raise: Chips,
+        /// The current big blind.
+        big_blind: Chips,
         /// The list of legal actions.
         actions: Vec<PlayerAction>,
     },

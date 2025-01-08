@@ -3,7 +3,7 @@
 
 //! Types used in a Poker game.
 use serde::{Deserialize, Serialize};
-use std::{fmt, sync::atomic};
+use std::{fmt, ops, sync::atomic};
 
 mod cards;
 pub use cards::{Card, Deck, Rank, Suit};
@@ -31,14 +31,26 @@ impl fmt::Display for TableId {
 
 /// Chips amount.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Chips(pub u32);
+pub struct Chips(u32);
 
 impl Chips {
     /// The zero chips.
     pub const ZERO: Chips = Chips(0);
 }
 
-impl std::ops::Add for Chips {
+impl From<u32> for Chips {
+    fn from(val: u32) -> Self {
+        Chips(val)
+    }
+}
+
+impl From<Chips> for u32 {
+    fn from(val: Chips) -> Self {
+        val.0
+    }
+}
+
+impl ops::Add for Chips {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -46,13 +58,13 @@ impl std::ops::Add for Chips {
     }
 }
 
-impl std::ops::AddAssign for Chips {
+impl ops::AddAssign for Chips {
     fn add_assign(&mut self, rhs: Self) {
         self.0 = self.0.saturating_add(rhs.0);
     }
 }
 
-impl std::ops::Sub<Chips> for Chips {
+impl ops::Sub<Chips> for Chips {
     type Output = Self;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -60,7 +72,7 @@ impl std::ops::Sub<Chips> for Chips {
     }
 }
 
-impl std::ops::SubAssign for Chips {
+impl ops::SubAssign for Chips {
     fn sub_assign(&mut self, rhs: Self) {
         self.0 = self.0.saturating_sub(rhs.0);
     }

@@ -3,7 +3,7 @@
 
 //! Game view.
 use eframe::egui::*;
-use log::{error, info};
+use log::error;
 
 use freezeout_core::{
     message::{Message, PlayerAction},
@@ -18,6 +18,13 @@ pub struct GameView {
     game_state: GameState,
     error: Option<String>,
     action_request: Option<ActionRequest>,
+    bet_params: Option<BetParams>,
+}
+
+struct BetParams {
+    min_raise: u32,
+    big_blind: u32,
+    raise_value: u32,
 }
 
 impl View for GameView {
@@ -71,7 +78,10 @@ impl View for GameView {
 
 impl GameView {
     const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
+    const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
     const BG_COLOR: Color32 = Color32::from_gray(20);
+    const BUTTON_LX: f32 = 81.0;
+    const BUTTON_LY: f32 = 35.0;
 
     /// Creates a new [GameView].
     pub fn new(ctx: &Context) -> Self {
@@ -82,6 +92,7 @@ impl GameView {
             game_state: GameState::default(),
             error: None,
             action_request: None,
+            bet_params: None,
         }
     }
 
@@ -345,24 +356,29 @@ impl GameView {
     }
 
     fn paint_action_controls(&mut self, ui: &mut Ui, rect: &Rect, app: &mut App) {
-        const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
-        const BUTTON_LX: f32 = 81.0;
-        const BUTTON_LY: f32 = 35.0;
-
         if let Some(req) = &self.action_request {
             let rect = player_rect(rect, &Align2::CENTER_BOTTOM);
 
             let mut btn_rect = Rect::from_min_size(
                 rect.left_top() + vec2(0.0, 130.0),
-                vec2(BUTTON_LX, BUTTON_LY),
+                vec2(Self::BUTTON_LX, Self::BUTTON_LY),
             );
 
             for action in &req.actions {
                 paint_border(ui, &btn_rect);
 
+                let label = match action {
+                    PlayerAction::Bet | PlayerAction::Raise if self.bet_params.is_some() => {
+                        // Set the label for bet and raise to confirm if betting
+                        // controls are active.
+                        "CONFIRM"
+                    }
+                    _ => action.label(),
+                };
+
                 let btn = Button::new(
-                    RichText::new(action.label())
-                        .font(TEXT_FONT)
+                    RichText::new(label)
+                        .font(Self::TEXT_FONT)
                         .color(Self::TEXT_COLOR),
                 )
                 .fill(Self::BG_COLOR);
@@ -370,16 +386,118 @@ impl GameView {
                 if ui.put(btn_rect.shrink(2.0), btn).clicked() {
                     match action {
                         PlayerAction::Fold | PlayerAction::Check | PlayerAction::Call => {
+                            self.bet_params = None;
                             self.send_action(*action, Chips::ZERO, app);
-                            break;
+                            return;
                         }
-                        PlayerAction::Bet => info!("Bet"),
-                        PlayerAction::Raise => info!("Raise"),
+                        PlayerAction::Bet | PlayerAction::Raise => {
+                            if let Some(params) = &self.bet_params {
+                                self.send_action(*action, params.raise_value.into(), app);
+                                self.bet_params = None;
+                                return;
+                            } else {
+                                self.bet_params = Some(BetParams {
+                                    min_raise: req.min_raise.into(),
+                                    big_blind: req.big_blind.into(),
+                                    raise_value: req.min_raise.into(),
+                                });
+                            }
+                        }
                         _ => {}
                     }
                 }
 
-                btn_rect = btn_rect.translate(vec2(BUTTON_LX + 10.0, 0.0));
+                btn_rect = btn_rect.translate(vec2(Self::BUTTON_LX + 10.0, 0.0));
+            }
+
+            self.paint_betting_controls(ui, &rect);
+        }
+    }
+
+    fn paint_betting_controls(&mut self, ui: &mut Ui, rect: &Rect) {
+        const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
+
+        if let Some(params) = self.bet_params.as_mut() {
+            let rect = Rect::from_min_size(
+                rect.left_top() + vec2(182.0, 0.0),
+                vec2(Self::BUTTON_LX, 120.0),
+            );
+
+            paint_border(ui, &rect);
+
+            let mut ypos = 5.0;
+
+            ui.painter().text(
+                rect.left_top() + vec2(7.0, ypos),
+                Align2::LEFT_TOP,
+                "Raise To",
+                FontId::new(14.0, FontFamily::Monospace),
+                Self::TEXT_COLOR,
+            );
+
+            let galley = ui.painter().layout_no_wrap(
+                Chips::from(params.raise_value).to_string(),
+                FontId::new(14.0, FontFamily::Monospace),
+                Self::TEXT_COLOR,
+            );
+
+            ypos += 35.0;
+            ui.painter().galley(
+                rect.left_top() + vec2((rect.width() - galley.size().x) / 2.0, ypos),
+                galley,
+                Self::TEXT_COLOR,
+            );
+
+            let big_blind = params.big_blind;
+
+            // Maximum bet is the local player chips.
+            let max_bet = self
+                .game_state
+                .players()
+                .first()
+                .map(|p| p.chips.into())
+                .unwrap();
+
+            let slider = Slider::new(&mut params.raise_value, params.min_raise..=max_bet)
+                .show_value(false)
+                .step_by(big_blind as f64)
+                .trailing_fill(true);
+
+            ui.style_mut().spacing.slider_width = rect.width() - 10.0;
+            ui.visuals_mut().selection.bg_fill = Self::TEXT_COLOR;
+
+            ypos += 35.0;
+            let slider_rect =
+                Rect::from_min_size(rect.left_top() + vec2(5.0, ypos), vec2(rect.width(), 20.0));
+            ui.put(slider_rect, slider);
+
+            // Adjust slider value in case it goes above max_bet, this may happen if
+            // the max_bet is not a multiple of the slider step_by.
+            params.raise_value = params.raise_value.min(max_bet);
+
+            ypos += 20.0;
+            let btn = Button::new(RichText::new("-").font(TEXT_FONT).color(Self::TEXT_COLOR))
+                .fill(Self::BG_COLOR);
+            let btn_rect = Rect::from_min_size(
+                rect.left_top() + vec2(0.0, ypos),
+                vec2(rect.width() / 2.0 - 2.0, 20.0),
+            );
+
+            if ui.put(btn_rect, btn).clicked() {
+                params.raise_value = params
+                    .raise_value
+                    .saturating_sub(big_blind)
+                    .max(params.min_raise);
+            }
+
+            let btn = Button::new(RichText::new("+").font(TEXT_FONT).color(Self::TEXT_COLOR))
+                .fill(Self::BG_COLOR);
+            let btn_rect = Rect::from_min_size(
+                rect.left_top() + vec2(rect.width() / 2.0, ypos),
+                vec2(rect.width() / 2.0, 20.0),
+            );
+            if ui.put(btn_rect, btn).clicked() {
+                params.raise_value = params.raise_value.saturating_add(big_blind).min(max_bet);
             }
         }
     }

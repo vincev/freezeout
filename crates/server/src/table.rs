@@ -263,11 +263,11 @@ impl State {
         Self {
             table_id,
             seats,
-            join_chips: Chips(1_000_000),
+            join_chips: 1_000_000.into(),
             sk,
             hand_state: HandState::WaitForPlayers,
-            small_blind: Chips(10_000),
-            big_blind: Chips(20_000),
+            small_blind: 10_000.into(),
+            big_blind: 20_000.into(),
             players: Vec::with_capacity(seats),
             deck: Deck::new_and_shuffled(),
             active_player: 0,
@@ -523,6 +523,7 @@ impl State {
             let msg = Message::ActionRequest {
                 player_id: player.player_id.clone(),
                 min_raise: self.min_raise,
+                big_blind: self.big_blind,
                 actions,
             };
 
