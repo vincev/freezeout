@@ -4,7 +4,7 @@
 //! Table state types.
 use anyhow::{bail, Result};
 use log::{error, info};
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 use tokio::sync::{broadcast, mpsc, oneshot};
 
 use freezeout_core::{
@@ -240,6 +240,131 @@ impl Player {
     }
 }
 
+/// The table players state.
+#[derive(Debug, Default)]
+struct PlayersState {
+    players: Vec<Player>,
+    active_player: Option<usize>,
+}
+
+impl PlayersState {
+    /// Adds a player to the table.
+    fn join(&mut self, player: Player) {
+        self.players.push(player);
+    }
+
+    /// Removes a player from the table.
+    fn leave(&mut self, player_id: &PeerId) -> Option<Player> {
+        if let Some(pos) = self.players.iter().position(|p| &p.player_id == player_id) {
+            let player = self.players.remove(pos);
+
+            let count_active = self.count_active();
+            // Adjust active_player index.
+            if count_active == 0 {
+                self.active_player = None;
+            } else if count_active == 1 {
+                self.active_player = self.players.iter().position(|p| p.is_active);
+            } else if let Some(active_player) = self.active_player.as_mut() {
+                // If we removed active player activate the next one, there must be
+                // one as count_active > 1.
+                match pos.cmp(active_player) {
+                    Ordering::Less => {
+                        // Adjust active player if the player leaving came before it.
+                        *active_player -= 1;
+                    }
+                    Ordering::Equal => {
+                        // Adjust index if we removed last element.
+                        if pos == self.players.len() {
+                            *active_player = 0;
+                        }
+
+                        loop {
+                            if self.players[*active_player].is_active {
+                                break;
+                            }
+
+                            *active_player = (*active_player + 1) % self.players.len();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            Some(player)
+        } else {
+            None
+        }
+    }
+
+    /// Returns total number of players.
+    fn count(&self) -> usize {
+        self.players.len()
+    }
+
+    /// Returns the number of active players.
+    fn count_active(&self) -> usize {
+        self.players.iter().filter(|p| p.is_active).count()
+    }
+
+    /// Returns the active player.
+    fn active_player(&mut self) -> Option<&mut Player> {
+        self.active_player.and_then(|idx| self.players.get_mut(idx))
+    }
+
+    /// Check if this player is active.
+    fn is_active(&self, player_id: &PeerId) -> bool {
+        self.active_player
+            .and_then(|idx| self.players.get(idx))
+            .map(|p| &p.player_id == player_id)
+            .unwrap_or(false)
+    }
+
+    /// Returns an iterator to all players.
+    fn iter(&self) -> impl Iterator<Item = &Player> {
+        self.players.iter()
+    }
+
+    /// Returns a mutable iterator to all players.
+    fn iter_mut(&mut self) -> impl Iterator<Item = &mut Player> {
+        self.players.iter_mut()
+    }
+
+    /// Activate the next player if there is more than one active player.
+    fn next_player(&mut self) {
+        if self.count_active() > 1 && self.active_player.is_some() {
+            loop {
+                let active_player = self.active_player.get_or_insert_default();
+                *active_player = (*active_player + 1) % self.players.len();
+                if self.players[*active_player].is_active {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Set state for a new hand.
+    fn start_hand(&mut self) {
+        for player in &mut self.players {
+            player.start_hand();
+        }
+
+        if self.count_active() > 1 {
+            // Rotate players so that the first player becomes the button.
+            loop {
+                self.players.rotate_left(1);
+                if self.players[0].is_active {
+                    // Checked above there are at least 2 active players.
+                    break;
+                }
+            }
+
+            self.active_player = Some(0);
+        } else {
+            self.active_player = None;
+        }
+    }
+}
+
 /// Internal table state.
 #[derive(Debug)]
 struct State {
@@ -250,9 +375,8 @@ struct State {
     hand_state: HandState,
     small_blind: Chips,
     big_blind: Chips,
-    players: Vec<Player>,
+    players: PlayersState,
     deck: Deck,
-    active_player: usize,
     last_bet: Chips,
     min_raise: Chips,
 }
@@ -268,9 +392,8 @@ impl State {
             hand_state: HandState::WaitForPlayers,
             small_blind: 10_000.into(),
             big_blind: 20_000.into(),
-            players: Vec::with_capacity(seats),
+            players: PlayersState::default(),
             deck: Deck::new_and_shuffled(),
-            active_player: 0,
             last_bet: Chips::ZERO,
             min_raise: Chips::ZERO,
         }
@@ -286,7 +409,7 @@ impl State {
             bail!("Hand in progress");
         }
 
-        if self.players.len() == self.seats {
+        if self.players.count() == self.seats {
             bail!("Table full");
         }
 
@@ -313,7 +436,7 @@ impl State {
         let _ = table_tx.send(TableMessage::Send(smsg)).await;
 
         // Send joined message for each player at the table to the new player.
-        for player in &self.players {
+        for player in self.players.iter() {
             let msg = Message::PlayerJoined {
                 player_id: player.player_id.clone(),
                 nickname: player.nickname.clone(),
@@ -336,11 +459,11 @@ impl State {
             is_active: true,
         };
 
-        self.players.push(player);
+        self.players.join(player);
 
         info!("Player {player_id} joined table {}", self.table_id);
 
-        if self.players.len() == self.seats {
+        if self.players.count() == self.seats {
             self.enter_start_hand().await;
         }
 
@@ -349,36 +472,15 @@ impl State {
 
     /// A player leaves the table.
     async fn leave(&mut self, player_id: &PeerId) {
-        if let Some(pos) = self
-            .players
-            .iter_mut()
-            .position(|p| &p.player_id == player_id)
-        {
-            self.players.remove(pos);
-
-            let msg = Message::PlayerLeft(player_id.clone());
+        let active_is_leaving = self.players.is_active(player_id);
+        if let Some(player) = self.players.leave(player_id) {
+            // TODO: updated pots.
+            let msg = Message::PlayerLeft(player.player_id);
             self.broadcast(msg).await;
 
-            if self.players.is_empty() {
-                self.hand_state = HandState::WaitForPlayers;
-            } else if self.players.len() == 1 {
-                // If one player left the hand ends and the player wins the game.
-                self.active_player = 0;
-                self.enter_end_game().await;
-            } else if pos < self.active_player {
-                // Adjust active player if the player leaving acts before.
-                self.active_player -= 1;
-            } else if pos == self.active_player {
-                // If the active player was the last activate first player otherwise
-                // activate the player that moved in the same position.
-                if pos == self.players.len() {
-                    self.active_player = 0;
-                }
-
+            if active_is_leaving {
                 self.request_action().await;
             }
-
-            // Nothing to do if the player leaving comes after the active player.
         }
     }
 
@@ -386,15 +488,31 @@ impl State {
     async fn message(&mut self, msg: SignedMessage) {
         info!("Player message: {msg:?}");
         match msg.message() {
-            Message::ActionResponse {
-                action: _,
-                amount: _,
-            } => {
-                let player = &self.players[self.active_player];
-                // Only process responses coming from active player.
-                if player.player_id == msg.sender() {
-                    self.next_player();
-                    self.request_action().await;
+            Message::ActionResponse { action, amount } => {
+                if let Some(player) = self.players.active_player() {
+                    // Only process responses coming from active player.
+                    if player.player_id == msg.sender() {
+                        player.action = *action;
+                        match action {
+                            PlayerAction::Fold => {
+                                // TODO: handle pot
+                                player.is_active = false;
+                            }
+                            PlayerAction::Call => {
+                                player.bet(*action, self.last_bet);
+                            }
+                            PlayerAction::Check => {}
+                            PlayerAction::Bet | PlayerAction::Raise => {
+                                // TODO: handle min_raise
+                                player.bet(*action, *amount);
+                            }
+                            _ => {}
+                        }
+
+                        self.players.next_player();
+                        self.broadcast_game_update().await;
+                        self.request_action().await;
+                    }
                 }
             }
             Message::Error(e) => error!("Error {e}"),
@@ -404,10 +522,7 @@ impl State {
 
     /// Start a new hand.
     async fn enter_start_hand(&mut self) {
-        // Activate all players who have chips.
-        for player in &mut self.players {
-            player.start_hand();
-        }
+        self.players.start_hand();
 
         // If there are fewer than 2 active players end the game.
         if self.count_active() < 2 {
@@ -417,23 +532,16 @@ impl State {
 
         self.hand_state = HandState::StartHand;
 
-        // Rotate players so that the first player becomes the button.
-        loop {
-            self.players.rotate_left(1);
-            if self.players[0].is_active {
-                // Checked above there are at least 2 active players.
-                break;
-            }
-        }
-
-        // Reset the active player to the fist player.
-        self.active_player = 0;
-
         // Pay small and big blind.
-        self.players[self.active_player].bet(PlayerAction::SmallBlind, self.small_blind);
+        if let Some(player) = self.players.active_player() {
+            player.bet(PlayerAction::SmallBlind, self.small_blind);
+        };
 
-        self.next_player();
-        self.players[self.active_player].bet(PlayerAction::BigBlind, self.big_blind);
+        self.players.next_player();
+
+        if let Some(player) = self.players.active_player() {
+            player.bet(PlayerAction::BigBlind, self.big_blind);
+        };
 
         self.last_bet = self.big_blind;
         self.min_raise = self.big_blind;
@@ -445,7 +553,7 @@ impl State {
         self.broadcast(Message::StartHand).await;
 
         // Deal cards to each player.
-        for player in &mut self.players {
+        for player in self.players.iter_mut() {
             if player.is_active {
                 player.public_cards = PlayerCards::Covered;
                 player.hole_cards = PlayerCards::Cards(self.deck.deal(), self.deck.deal());
@@ -459,7 +567,7 @@ impl State {
         self.broadcast_game_update().await;
 
         // Deal the cards to each player.
-        for player in &self.players {
+        for player in self.players.iter() {
             if let PlayerCards::Cards(c1, c2) = player.hole_cards {
                 let msg = Message::DealCards(c1, c2);
                 let smsg = SignedMessage::new(&self.sk, msg);
@@ -468,7 +576,7 @@ impl State {
         }
 
         // Activate next player and request action.
-        self.next_player();
+        self.players.next_player();
         self.request_action().await;
     }
 
@@ -493,15 +601,14 @@ impl State {
 
         let msg = Message::GameUpdate { players };
         let smsg = SignedMessage::new(&self.sk, msg);
-        for player in &self.players {
+        for player in self.players.iter() {
             player.send(smsg.clone()).await;
         }
     }
 
     /// Request action to the active player.
-    async fn request_action(&self) {
-        if self.count_active() > 1 {
-            let player = &self.players[self.active_player];
+    async fn request_action(&mut self) {
+        if let Some(player) = self.players.active_player() {
             let mut actions = vec![PlayerAction::Fold];
 
             if player.bet == self.last_bet {
@@ -534,23 +641,12 @@ impl State {
     /// Broadcast a message to all players at the table.
     async fn broadcast(&self, msg: Message) {
         let smsg = SignedMessage::new(&self.sk, msg);
-        for player in &self.players {
+        for player in self.players.iter() {
             player.send(smsg.clone()).await;
         }
     }
 
     fn count_active(&self) -> usize {
         self.players.iter().filter(|p| p.is_active).count()
-    }
-
-    fn next_player(&mut self) {
-        if self.count_active() > 1 {
-            loop {
-                self.active_player = (self.active_player + 1) % self.players.len();
-                if self.players[self.active_player].is_active {
-                    break;
-                }
-            }
-        }
     }
 }
