@@ -495,7 +495,6 @@ impl State {
                         player.action = *action;
                         match action {
                             PlayerAction::Fold => {
-                                // TODO: handle pot
                                 player.is_active = false;
                             }
                             PlayerAction::Call => {
@@ -503,8 +502,10 @@ impl State {
                             }
                             PlayerAction::Check => {}
                             PlayerAction::Bet | PlayerAction::Raise => {
-                                // TODO: handle min_raise
-                                player.bet(*action, *amount);
+                                let amount = *amount.min(&(player.bet + player.chips));
+                                self.min_raise = (amount - self.last_bet).max(self.min_raise);
+                                self.last_bet = amount.max(self.last_bet);
+                                player.bet(*action, amount);
                             }
                             _ => {}
                         }
@@ -623,13 +624,13 @@ impl State {
                 actions.push(PlayerAction::Bet);
             }
 
-            if player.chips >= self.last_bet && self.last_bet > Chips::ZERO {
+            if player.chips + player.bet > self.last_bet && self.last_bet > Chips::ZERO {
                 actions.push(PlayerAction::Raise);
             }
 
             let msg = Message::ActionRequest {
                 player_id: player.player_id.clone(),
-                min_raise: self.min_raise,
+                min_raise: self.min_raise + self.last_bet,
                 big_blind: self.big_blind,
                 actions,
             };

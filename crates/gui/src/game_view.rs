@@ -455,7 +455,7 @@ impl GameView {
                 .game_state
                 .players()
                 .first()
-                .map(|p| p.chips.into())
+                .map(|p| (p.chips + p.bet).into())
                 .unwrap();
 
             let slider = Slider::new(&mut params.raise_value, params.min_raise..=max_bet)
