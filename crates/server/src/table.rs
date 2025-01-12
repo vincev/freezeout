@@ -463,6 +463,7 @@ impl State {
 
         info!("Player {player_id} joined table {}", self.table_id);
 
+        // If all seats are full start the hand.
         if self.players.count() == self.seats {
             self.enter_start_hand().await;
         }
@@ -480,6 +481,10 @@ impl State {
 
             if active_is_leaving {
                 self.request_action().await;
+            }
+
+            if self.count_active() < 2 {
+                self.enter_end_hand().await;
             }
         }
     }
@@ -510,9 +515,13 @@ impl State {
                             _ => {}
                         }
 
-                        self.players.next_player();
-                        self.broadcast_game_update().await;
-                        self.request_action().await;
+                        if self.is_round_complete() {
+                            self.next_round().await;
+                        } else {
+                            self.players.next_player();
+                            self.broadcast_game_update().await;
+                            self.request_action().await;
+                        }
                     }
                 }
             }
@@ -523,15 +532,15 @@ impl State {
 
     /// Start a new hand.
     async fn enter_start_hand(&mut self) {
+        self.hand_state = HandState::StartHand;
+
         self.players.start_hand();
 
         // If there are fewer than 2 active players end the game.
         if self.count_active() < 2 {
-            self.enter_end_game().await;
+            self.enter_end_hand().await;
             return;
         }
-
-        self.hand_state = HandState::StartHand;
 
         // Pay small and big blind.
         if let Some(player) = self.players.active_player() {
@@ -576,14 +585,76 @@ impl State {
             }
         }
 
-        // Activate next player and request action.
         self.players.next_player();
+        self.enter_preflop_betting().await;
+    }
+
+    async fn enter_preflop_betting(&mut self) {
+        self.hand_state = HandState::PreflopBetting;
         self.request_action().await;
     }
 
-    async fn enter_end_game(&mut self) {
-        self.hand_state = HandState::EndGame;
-        // TODO: End game logic.
+    async fn enter_deal_flop(&mut self) {
+        info!("Deal flop!");
+        self.hand_state = HandState::DealFlop;
+        // TODO: deal flop
+    }
+
+    async fn enter_deal_turn(&mut self) {
+        self.hand_state = HandState::DealTurn;
+        // TODO: deal turn
+    }
+
+    async fn enter_deal_river(&mut self) {
+        self.hand_state = HandState::DealRiver;
+        // TODO: deal river
+    }
+
+    async fn enter_showdown(&mut self) {
+        self.hand_state = HandState::Showdown;
+        // TODO: showdown
+    }
+
+    async fn enter_end_hand(&mut self) {
+        self.hand_state = HandState::EndHand;
+        // TODO: End hand logic.
+    }
+
+    /// Checks if all players in the hand have acted.
+    fn is_round_complete(&self) -> bool {
+        if self.count_active() < 2 {
+            return true;
+        }
+
+        for player in self.players.iter() {
+            if player.is_active {
+                // If a player didn't act the round is not complete.
+                match player.action {
+                    PlayerAction::None | PlayerAction::SmallBlind | PlayerAction::BigBlind => {
+                        return false
+                    }
+                    _ => {}
+                }
+
+                // If a player didn't match the last bet and is not all-in then the
+                // round not complete.
+                if player.bet < self.last_bet && player.chips > Chips::ZERO {
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    async fn next_round(&mut self) {
+        match self.hand_state {
+            HandState::PreflopBetting => self.enter_deal_flop().await,
+            HandState::FlopBetting => self.enter_deal_turn().await,
+            HandState::TurnBetting => self.enter_deal_river().await,
+            HandState::RiverBetting => self.enter_showdown().await,
+            _ => {}
+        }
     }
 
     /// Broadcast a game state update to all connected players.
