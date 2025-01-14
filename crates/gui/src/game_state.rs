@@ -7,7 +7,7 @@ use log::info;
 use freezeout_core::{
     crypto::PeerId,
     message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
-    poker::{Chips, PlayerCards, TableId},
+    poker::{Card, Chips, PlayerCards, TableId},
 };
 
 use crate::App;
@@ -49,6 +49,8 @@ pub struct GameState {
     error: Option<String>,
     players: Vec<Player>,
     action_request: Option<ActionRequest>,
+    board: Vec<Card>,
+    pot: Chips,
 }
 
 impl Default for GameState {
@@ -58,6 +60,8 @@ impl Default for GameState {
             error: None,
             players: Vec::default(),
             action_request: None,
+            board: Vec::default(),
+            pot: Chips::ZERO,
         }
     }
 }
@@ -125,8 +129,14 @@ impl GameState {
                     self.players[0].cards
                 );
             }
-            Message::GameUpdate { players } => {
+            Message::GameUpdate {
+                players,
+                board,
+                pot,
+            } => {
                 self.update_players(players);
+                self.board = board.clone();
+                self.pot = *pot;
             }
             Message::Error(e) => self.error = Some(e.clone()),
             Message::ActionRequest {
@@ -160,6 +170,16 @@ impl GameState {
     /// Returns a reference to the players.
     pub fn players(&self) -> &[Player] {
         &self.players
+    }
+
+    /// The current pot.
+    pub fn pot(&self) -> Chips {
+        self.pot
+    }
+
+    /// The board cards.
+    pub fn board(&self) -> &[Card] {
+        &self.board
     }
 
     fn update_players(&mut self, updates: &[PlayerUpdate]) {

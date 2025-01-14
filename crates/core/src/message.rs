@@ -42,6 +42,10 @@ pub enum Message {
     GameUpdate {
         /// The players update.
         players: Vec<PlayerUpdate>,
+        /// The board cards.
+        board: Vec<Card>,
+        /// The pot.
+        pot: Chips,
     },
     /// Request action from a player.
     ActionRequest {

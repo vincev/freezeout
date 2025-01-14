@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Table state types.
+use ahash::AHashSet;
 use anyhow::{bail, Result};
 use log::{error, info};
 use std::{cmp::Ordering, sync::Arc};
@@ -10,7 +11,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
     message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
-    poker::{Chips, Deck, PlayerCards, TableId},
+    poker::{Card, Chips, Deck, PlayerCards, TableId},
 };
 
 /// Table state shared by all players who joined the table.
@@ -363,6 +364,25 @@ impl PlayersState {
             self.active_player = None;
         }
     }
+
+    /// Starts a new round.
+    fn start_round(&mut self) {
+        self.active_player = None;
+
+        for (idx, p) in self.players.iter().enumerate() {
+            if p.chips > Chips::ZERO && p.is_active {
+                self.active_player = Some(idx);
+                return;
+            }
+        }
+    }
+}
+
+/// A pot that contains players bets.
+#[derive(Debug, Default)]
+struct Pot {
+    players: AHashSet<PeerId>,
+    amount: Chips,
 }
 
 /// Internal table state.
@@ -379,6 +399,8 @@ struct State {
     deck: Deck,
     last_bet: Chips,
     min_raise: Chips,
+    pots: Vec<Pot>,
+    board: Vec<Card>,
 }
 
 impl State {
@@ -396,6 +418,8 @@ impl State {
             deck: Deck::new_and_shuffled(),
             last_bet: Chips::ZERO,
             min_raise: Chips::ZERO,
+            pots: vec![Pot::default()],
+            board: Vec::default(),
         }
     }
 
@@ -516,12 +540,14 @@ impl State {
                         }
 
                         if self.is_round_complete() {
+                            info!("Round complete {:?}", self.hand_state);
                             self.next_round().await;
                         } else {
                             self.players.next_player();
-                            self.broadcast_game_update().await;
-                            self.request_action().await;
                         }
+
+                        self.broadcast_game_update().await;
+                        self.request_action().await;
                     }
                 }
             }
@@ -559,6 +585,12 @@ impl State {
         // Create a new deck.
         self.deck = Deck::new_and_shuffled();
 
+        // Clear board.
+        self.board.clear();
+
+        // Reset pots.
+        self.pots = vec![Pot::default()];
+
         // Tell clients to prepare for a new hand.
         self.broadcast(Message::StartHand).await;
 
@@ -595,19 +627,27 @@ impl State {
     }
 
     async fn enter_deal_flop(&mut self) {
-        info!("Deal flop!");
-        self.hand_state = HandState::DealFlop;
-        // TODO: deal flop
+        // Deal flop.
+        for _ in 1..=3 {
+            self.board.push(self.deck.deal());
+        }
+
+        self.hand_state = HandState::FlopBetting;
+        self.start_round();
     }
 
     async fn enter_deal_turn(&mut self) {
-        self.hand_state = HandState::DealTurn;
-        // TODO: deal turn
+        self.board.push(self.deck.deal());
+
+        self.hand_state = HandState::TurnBetting;
+        self.start_round();
     }
 
     async fn enter_deal_river(&mut self) {
-        self.hand_state = HandState::DealRiver;
-        // TODO: deal river
+        self.board.push(self.deck.deal());
+
+        self.hand_state = HandState::RiverBetting;
+        self.start_round();
     }
 
     async fn enter_showdown(&mut self) {
@@ -657,6 +697,64 @@ impl State {
         }
     }
 
+    fn start_round(&mut self) {
+        self.update_pots();
+
+        for player in self.players.iter_mut() {
+            player.bet = Chips::ZERO;
+            player.action = PlayerAction::None;
+        }
+
+        self.last_bet = Chips::ZERO;
+        self.min_raise = self.big_blind;
+
+        self.players.start_round();
+
+        info!("Board: {:#?}", self.board);
+    }
+
+    fn update_pots(&mut self) {
+        // Updates pots if there is a bet.
+        if self.last_bet > Chips::ZERO {
+            // Move bets to pots.
+            loop {
+                // Find minimum bet in case a player went all in.
+                let min_bet = self
+                    .players
+                    .iter()
+                    .filter(|p| p.bet > Chips::ZERO)
+                    .map(|p| p.bet)
+                    .min()
+                    .unwrap_or_default();
+
+                if min_bet == Chips::ZERO {
+                    break;
+                }
+
+                let mut went_all_in = false;
+                for player in self.players.iter_mut() {
+                    let pot = self.pots.last_mut().unwrap();
+                    if player.bet > Chips::ZERO {
+                        player.bet -= min_bet;
+                        pot.amount += min_bet;
+
+                        if !pot.players.contains(&player.player_id) {
+                            pot.players.insert(player.player_id.clone());
+                        }
+
+                        went_all_in = player.chips == Chips::ZERO;
+                    }
+                }
+
+                if went_all_in {
+                    self.pots.push(Pot::default());
+                }
+            }
+        }
+
+        info!("Pots: {:#?}", self.pots);
+    }
+
     /// Broadcast a game state update to all connected players.
     async fn broadcast_game_update(&self) {
         let players = self
@@ -671,7 +769,17 @@ impl State {
             })
             .collect();
 
-        let msg = Message::GameUpdate { players };
+        let pot = self
+            .pots
+            .iter()
+            .map(|p| p.amount)
+            .fold(Chips::ZERO, |acc, c| acc + c);
+
+        let msg = Message::GameUpdate {
+            players,
+            board: self.board.clone(),
+            pot,
+        };
         let smsg = SignedMessage::new(&self.sk, msg);
         for player in self.players.iter() {
             player.send(smsg.clone()).await;

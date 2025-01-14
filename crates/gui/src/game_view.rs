@@ -58,6 +58,8 @@ impl View for GameView {
                 let (rect, _) = ui.allocate_exact_size(vec2(1024.0, 640.0), Sense::hover());
                 let table_rect = Rect::from_center_size(rect.center(), rect.shrink(60.0).size());
                 self.paint_table(ui, &table_rect);
+                self.paint_board(ui, &table_rect, app);
+                self.paint_pot(ui, &table_rect);
                 self.paint_players(ui, &rect, app);
             });
     }
@@ -149,6 +151,51 @@ impl GameView {
         // Cards board
         paint_oval(ui, &rect.shrink(162.0), Color32::from_gray(160));
         paint_oval(ui, &rect.shrink(164.0), inner);
+    }
+
+    fn paint_board(&self, ui: &mut Ui, rect: &Rect, app: &App) {
+        const CARD_SIZE: Vec2 = vec2(38.0, 72.0);
+        const BORDER: f32 = 5.0;
+
+        if self.game_state.board().is_empty() {
+            return;
+        }
+
+        let mut card_rect = Rect::from_min_size(
+            rect.center() - vec2(CARD_SIZE.x * 2.5 + 2.0 * BORDER, CARD_SIZE.y / 2.0 + 20.0),
+            CARD_SIZE,
+        );
+
+        for card in self.game_state.board() {
+            let tx = app.textures.card(*card);
+            Image::new(&tx).rounding(5.0).paint_at(ui, card_rect);
+
+            card_rect = card_rect.translate(vec2(CARD_SIZE.x + BORDER, 0.0));
+        }
+    }
+
+    fn paint_pot(&self, ui: &mut Ui, rect: &Rect) {
+        const POT_SIZE: Vec2 = vec2(120.0, 40.0);
+
+        if self.game_state.pot() > Chips::ZERO {
+            let rect = Rect::from_min_size(
+                rect.center() - vec2(POT_SIZE.x / 2.0, -POT_SIZE.y),
+                POT_SIZE,
+            );
+
+            paint_border(ui, &rect);
+
+            let galley = ui.painter().layout_no_wrap(
+                self.game_state.pot().to_string(),
+                FontId::new(18.0, FontFamily::Monospace),
+                Self::TEXT_COLOR,
+            );
+
+            let text_offset = (rect.size() - galley.rect.size()) / 2.0;
+
+            ui.painter()
+                .galley(rect.left_top() + text_offset, galley, Self::TEXT_COLOR);
+        }
     }
 
     fn paint_players(&mut self, ui: &mut Ui, rect: &Rect, app: &mut App) {
@@ -248,26 +295,27 @@ impl GameView {
 
         let painter = ui.painter().with_clip_rect(bg_rect.shrink(3.0));
 
-        let text_color = Self::TEXT_COLOR;
         let font = FontId::new(13.0, FontFamily::Monospace);
 
-        let galley =
-            ui.painter()
-                .layout_no_wrap(player.nickname.to_string(), font.clone(), text_color);
+        let galley = ui.painter().layout_no_wrap(
+            player.nickname.to_string(),
+            font.clone(),
+            Self::TEXT_COLOR,
+        );
 
         painter.galley(
             bg_rect.left_top() + vec2(5.0, 4.0),
             galley.clone(),
-            text_color,
+            Self::TEXT_COLOR,
         );
 
         let chips_pos = bg_rect.left_top() + vec2(0.0, galley.size().y);
 
         let galley = ui
             .painter()
-            .layout_no_wrap(player.chips.to_string(), font, text_color);
+            .layout_no_wrap(player.chips.to_string(), font, Self::TEXT_COLOR);
 
-        painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), text_color);
+        painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), Self::TEXT_COLOR);
     }
 
     fn paint_player_cards(
@@ -307,20 +355,24 @@ impl GameView {
     }
 
     fn paint_player_action(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) {
+        if matches!(player.cards, PlayerCards::None) {
+            return;
+        }
+
+        let rect = match align.x() {
+            Align::RIGHT => Rect::from_min_size(
+                rect.left_bottom() + vec2(-(rect.width() + 10.0), 10.0),
+                vec2(rect.width(), 40.0),
+            ),
+            _ => Rect::from_min_size(
+                rect.left_bottom() + vec2(rect.width() + 10.0, 10.0),
+                vec2(rect.width(), 40.0),
+            ),
+        };
+
+        paint_border(ui, &rect);
+
         if !matches!(player.action, PlayerAction::None) {
-            let rect = match align.x() {
-                Align::RIGHT => Rect::from_min_size(
-                    rect.left_bottom() + vec2(-(rect.width() + 10.0), 10.0),
-                    vec2(rect.width(), 40.0),
-                ),
-                _ => Rect::from_min_size(
-                    rect.left_bottom() + vec2(rect.width() + 10.0, 10.0),
-                    vec2(rect.width(), 40.0),
-                ),
-            };
-
-            paint_border(ui, &rect);
-
             let mut action_rect = rect.shrink(1.0);
             action_rect.set_height(rect.height() / 2.0);
 
