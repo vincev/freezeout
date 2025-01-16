@@ -5,8 +5,15 @@
 use ahash::AHashSet;
 use anyhow::{bail, Result};
 use log::{error, info};
-use std::{cmp::Ordering, sync::Arc};
-use tokio::sync::{broadcast, mpsc, oneshot};
+use std::{
+    cmp::Ordering,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::{
+    sync::{broadcast, mpsc, oneshot},
+    time,
+};
 
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
@@ -132,10 +139,15 @@ struct TableTask {
 impl TableTask {
     async fn run(&mut self) -> Result<()> {
         let mut state = State::new(self.table_id, self.seats, self.sk.clone());
+        let mut ticks = time::interval(Duration::from_millis(1000));
+
         loop {
             tokio::select! {
                 // Server is shutting down exit this handler.
                 _ = self.shutdown_broadcast_rx.recv() => break Ok(()),
+                _ = ticks.tick() => {
+                    state.tick().await;
+                }
                 // We have received a message from the client.
                 res = self.commands_rx.recv() => match res {
                     Some(TableCommand::Join(peer_id, nickname, res_tx)) => {
@@ -165,16 +177,10 @@ enum HandState {
     StartHand,
     /// Handle preflop betting.
     PreflopBetting,
-    /// Deal flop cards.
-    DealFlop,
     /// Handle flop betting.
     FlopBetting,
-    /// Deal turn card.
-    DealTurn,
     /// Handle turn betting.
     TurnBetting,
-    /// Deal river card.
-    DealRiver,
     /// Handle river players action.
     RiverBetting,
     /// Showdown.
@@ -307,9 +313,19 @@ impl PlayersState {
         self.players.iter().filter(|p| p.is_active).count()
     }
 
+    /// Returns the number of player who have chips.
+    fn count_with_chips(&self) -> usize {
+        self.players
+            .iter()
+            .filter(|p| p.chips > Chips::ZERO)
+            .count()
+    }
+
     /// Returns the active player.
     fn active_player(&mut self) -> Option<&mut Player> {
-        self.active_player.and_then(|idx| self.players.get_mut(idx))
+        self.active_player
+            .and_then(|idx| self.players.get_mut(idx))
+            .filter(|p| p.is_active)
     }
 
     /// Check if this player is active.
@@ -401,6 +417,7 @@ struct State {
     min_raise: Chips,
     pots: Vec<Pot>,
     board: Vec<Card>,
+    new_hand_start_time: Option<Instant>,
 }
 
 impl State {
@@ -420,6 +437,7 @@ impl State {
             min_raise: Chips::ZERO,
             pots: vec![Pot::default()],
             board: Vec::default(),
+            new_hand_start_time: None,
         }
     }
 
@@ -483,6 +501,9 @@ impl State {
             is_active: true,
         };
 
+        // TODO TESTING: remove this.
+        self.join_chips += Chips::from(250_000);
+
         self.players.join(player);
 
         info!("Player {player_id} joined table {}", self.table_id);
@@ -515,7 +536,6 @@ impl State {
 
     /// Handle a message from a player.
     async fn message(&mut self, msg: SignedMessage) {
-        info!("Player message: {msg:?}");
         match msg.message() {
             Message::ActionResponse { action, amount } => {
                 if let Some(player) = self.players.active_player() {
@@ -540,7 +560,6 @@ impl State {
                         }
 
                         if self.is_round_complete() {
-                            info!("Round complete {:?}", self.hand_state);
                             self.next_round().await;
                         } else {
                             self.players.next_player();
@@ -553,6 +572,15 @@ impl State {
             }
             Message::Error(e) => error!("Error {e}"),
             _ => {}
+        }
+    }
+
+    async fn tick(&mut self) {
+        if let Some(dt) = self.new_hand_start_time {
+            if dt.elapsed() > Duration::from_secs(10) {
+                self.new_hand_start_time = None;
+                self.enter_start_hand().await;
+            }
         }
     }
 
@@ -627,7 +655,6 @@ impl State {
     }
 
     async fn enter_deal_flop(&mut self) {
-        // Deal flop.
         for _ in 1..=3 {
             self.board.push(self.deck.deal());
         }
@@ -652,12 +679,34 @@ impl State {
 
     async fn enter_showdown(&mut self) {
         self.hand_state = HandState::Showdown;
-        // TODO: showdown
+        self.start_round();
+
+        for player in self.players.iter_mut() {
+            if player.is_active {
+                player.public_cards = player.hole_cards;
+                player.is_active = false;
+            }
+        }
+
+        // TODO: evaluate cards and find winner.
+        self.broadcast_game_update().await;
+        self.enter_end_hand().await;
     }
 
     async fn enter_end_hand(&mut self) {
         self.hand_state = HandState::EndHand;
-        // TODO: End hand logic.
+
+        if self.players.count_with_chips() < 2 {
+            self.enter_end_game().await;
+        } else {
+            self.new_hand_start_time = Some(Instant::now());
+        }
+    }
+
+    async fn enter_end_game(&mut self) {
+        self.hand_state = HandState::EndGame;
+
+        // TODO: End game logic.
     }
 
     /// Checks if all players in the hand have acted.
@@ -667,19 +716,28 @@ impl State {
         }
 
         for player in self.players.iter() {
+            // If a player didn't match the last bet and is not all-in then the
+            // player has to act and the round is not complete.
+            if player.is_active && player.bet < self.last_bet && player.chips > Chips::ZERO {
+                return false;
+            }
+        }
+
+        // Only one player has chips all others are all in.
+        if self.players.count_with_chips() < 2 {
+            return true;
+        }
+
+        for player in self.players.iter() {
             if player.is_active {
                 // If a player didn't act the round is not complete.
                 match player.action {
-                    PlayerAction::None | PlayerAction::SmallBlind | PlayerAction::BigBlind => {
+                    PlayerAction::None | PlayerAction::SmallBlind | PlayerAction::BigBlind
+                        if player.chips > Chips::ZERO =>
+                    {
                         return false
                     }
                     _ => {}
-                }
-
-                // If a player didn't match the last bet and is not all-in then the
-                // round not complete.
-                if player.bet < self.last_bet && player.chips > Chips::ZERO {
-                    return false;
                 }
             }
         }
@@ -688,12 +746,22 @@ impl State {
     }
 
     async fn next_round(&mut self) {
-        match self.hand_state {
-            HandState::PreflopBetting => self.enter_deal_flop().await,
-            HandState::FlopBetting => self.enter_deal_turn().await,
-            HandState::TurnBetting => self.enter_deal_river().await,
-            HandState::RiverBetting => self.enter_showdown().await,
-            _ => {}
+        if self.count_active() < 2 {
+            self.enter_end_hand().await;
+            return;
+        }
+
+        while self.is_round_complete() {
+            match self.hand_state {
+                HandState::PreflopBetting => self.enter_deal_flop().await,
+                HandState::FlopBetting => self.enter_deal_turn().await,
+                HandState::TurnBetting => self.enter_deal_river().await,
+                HandState::RiverBetting => {
+                    self.enter_showdown().await;
+                    return;
+                }
+                _ => {}
+            }
         }
     }
 
