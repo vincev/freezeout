@@ -40,6 +40,9 @@ impl View for GameView {
                 ConnectionEvent::Error(e) => {
                     self.error = Some(format!("Connection error {e}"));
                     error!("Connection error {e}");
+
+                    app.close_connection();
+                    self.connection_closed = true;
                 }
                 ConnectionEvent::Message(msg) => {
                     self.game_state.handle_message(msg, app);
