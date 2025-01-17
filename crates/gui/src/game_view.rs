@@ -319,6 +319,11 @@ impl GameView {
             .layout_no_wrap(player.chips.to_string(), font, Self::TEXT_COLOR);
 
         painter.galley(chips_pos + vec2(5.0, 7.0), galley.clone(), Self::TEXT_COLOR);
+
+        if player.has_button {
+            let btn_pos = bg_rect.right_top() + vec2(-10.0, 10.0);
+            painter.circle(btn_pos, 6.0, Self::TEXT_COLOR, Stroke::NONE);
+        }
     }
 
     fn paint_player_cards(

@@ -29,6 +29,23 @@ pub struct Player {
     pub action: PlayerAction,
     /// This playe cards.
     pub cards: PlayerCards,
+    /// The player has the button.
+    pub has_button: bool,
+}
+
+impl Player {
+    fn new(player_id: PeerId, nickname: String, chips: Chips) -> Self {
+        Self {
+            player_id_digits: player_id.digits(),
+            player_id,
+            nickname,
+            chips,
+            bet: Chips::ZERO,
+            action: PlayerAction::None,
+            cards: PlayerCards::None,
+            has_button: false,
+        }
+    }
 }
 
 /// A player action request from the server.
@@ -73,16 +90,11 @@ impl GameState {
             Message::TableJoined { table_id, chips } => {
                 self.table_id = *table_id;
                 // Add this player as the first player in the players list.
-                let player_id = app.player_id().clone();
-                self.players.push(Player {
-                    player_id_digits: player_id.digits(),
-                    player_id,
-                    nickname: app.nickname().to_string(),
-                    chips: *chips,
-                    bet: Chips::ZERO,
-                    action: PlayerAction::None,
-                    cards: PlayerCards::None,
-                });
+                self.players.push(Player::new(
+                    app.player_id().clone(),
+                    app.nickname().to_string(),
+                    *chips,
+                ));
 
                 info!(
                     "Joined table {} {:?}",
@@ -95,15 +107,8 @@ impl GameState {
                 nickname,
                 chips,
             } => {
-                self.players.push(Player {
-                    player_id_digits: player_id.digits(),
-                    player_id: player_id.clone(),
-                    nickname: nickname.clone(),
-                    chips: *chips,
-                    bet: Chips::ZERO,
-                    action: PlayerAction::None,
-                    cards: PlayerCards::None,
-                });
+                self.players
+                    .push(Player::new(player_id.clone(), nickname.clone(), *chips));
 
                 info!("Added player {:?}", self.players.last().unwrap())
             }
@@ -193,6 +198,7 @@ impl GameState {
                 player.chips = update.chips;
                 player.bet = update.bet;
                 player.action = update.action;
+                player.has_button = update.has_button;
 
                 // Do not override cards for local player as these are assigned at
                 // players cards dealing.

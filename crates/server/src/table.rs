@@ -212,9 +212,30 @@ struct Player {
     hole_cards: PlayerCards,
     /// This player is active in the hand.
     is_active: bool,
+    /// The player has the button.
+    has_button: bool,
 }
 
 impl Player {
+    fn new(
+        player_id: PeerId,
+        nickname: String,
+        chips: Chips,
+        table_tx: mpsc::Sender<TableMessage>,
+    ) -> Self {
+        Self {
+            player_id,
+            table_tx,
+            nickname,
+            chips,
+            bet: Chips::default(),
+            action: PlayerAction::None,
+            public_cards: PlayerCards::None,
+            hole_cards: PlayerCards::None,
+            is_active: true,
+            has_button: false,
+        }
+    }
     /// Send a message to this player connection.
     async fn send(&self, msg: SignedMessage) {
         let _ = self.table_tx.send(TableMessage::Send(msg)).await;
@@ -223,6 +244,7 @@ impl Player {
     /// Reset state for a new hand.
     fn start_hand(&mut self) {
         self.is_active = self.chips > Chips::ZERO;
+        self.has_button = false;
         self.bet = Chips::ZERO;
         self.action = PlayerAction::None;
         self.public_cards = PlayerCards::None;
@@ -370,7 +392,15 @@ impl PlayersState {
             loop {
                 self.players.rotate_left(1);
                 if self.players[0].is_active {
-                    // Checked above there are at least 2 active players.
+                    // Checked above there are at least 2 active players, go back and
+                    // set the button.
+                    for p in self.players.iter_mut().rev() {
+                        if p.is_active {
+                            p.has_button = true;
+                            break;
+                        }
+                    }
+
                     break;
                 }
             }
@@ -489,17 +519,12 @@ impl State {
         }
 
         // Add new player to the table.
-        let player = Player {
-            player_id: player_id.clone(),
+        let player = Player::new(
+            player_id.clone(),
+            nickname.to_string(),
+            self.join_chips,
             table_tx,
-            nickname: nickname.to_string(),
-            chips: self.join_chips,
-            bet: Chips::default(),
-            action: PlayerAction::None,
-            public_cards: PlayerCards::None,
-            hole_cards: PlayerCards::None,
-            is_active: true,
-        };
+        );
 
         // TODO TESTING: remove this.
         self.join_chips += Chips::from(250_000);
@@ -524,12 +549,13 @@ impl State {
             let msg = Message::PlayerLeft(player.player_id);
             self.broadcast(msg).await;
 
-            if active_is_leaving {
-                self.request_action().await;
-            }
-
             if self.count_active() < 2 {
                 self.enter_end_hand().await;
+                return;
+            }
+
+            if active_is_leaving {
+                self.request_action().await;
             }
         }
     }
@@ -834,6 +860,7 @@ impl State {
                 bet: p.bet,
                 action: p.action,
                 cards: p.public_cards,
+                has_button: p.has_button,
             })
             .collect();
 

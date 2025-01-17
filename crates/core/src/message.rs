@@ -82,6 +82,8 @@ pub struct PlayerUpdate {
     pub action: PlayerAction,
     /// The player cards.
     pub cards: PlayerCards,
+    /// The player has the button.
+    pub has_button: bool,
 }
 
 /// A Player action.
