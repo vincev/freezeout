@@ -5,6 +5,7 @@
 use ahash::AHashSet;
 use anyhow::{bail, Result};
 use log::{error, info};
+use rand::seq::SliceRandom;
 use std::{
     cmp::Ordering,
     sync::Arc,
@@ -173,6 +174,8 @@ impl TableTask {
 enum HandState {
     /// The table is waiting for players to join before starting the game.
     WaitForPlayers,
+    /// Start the game.
+    StartGame,
     /// Start the hand, collect blinds and deal cards.
     StartHand,
     /// Handle preflop betting.
@@ -323,6 +326,12 @@ impl PlayersState {
         } else {
             None
         }
+    }
+
+    /// Shuffles the players seats.
+    fn shuffle_seats(&mut self) {
+        let mut rng = rand::thread_rng();
+        self.players.shuffle(&mut rng);
     }
 
     /// Returns total number of players.
@@ -533,9 +542,9 @@ impl State {
 
         info!("Player {player_id} joined table {}", self.table_id);
 
-        // If all seats are full start the hand.
+        // If all seats are full start the game.
         if self.players.count() == self.seats {
-            self.enter_start_hand().await;
+            self.enter_start_game().await;
         }
 
         Ok(table_rx)
@@ -608,6 +617,19 @@ impl State {
                 self.enter_start_hand().await;
             }
         }
+    }
+
+    async fn enter_start_game(&mut self) {
+        self.hand_state = HandState::StartGame;
+
+        // Shuffle seats before starting the game.
+        self.players.shuffle_seats();
+
+        // Tell players to update their seats order.
+        let seats = self.players.iter().map(|p| p.player_id.clone()).collect();
+        self.broadcast(Message::StartGame(seats)).await;
+
+        self.enter_start_hand().await;
     }
 
     /// Start a new hand.

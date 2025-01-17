@@ -115,6 +115,25 @@ impl GameState {
             Message::PlayerLeft(player_id) => {
                 self.players.retain(|p| &p.player_id != player_id);
             }
+            Message::StartGame(seats) => {
+                // Reorder seats according to the new order.
+                for (idx, seat_id) in seats.iter().enumerate() {
+                    let pos = self
+                        .players
+                        .iter()
+                        .position(|p| &p.player_id == seat_id)
+                        .expect("Player not found");
+                    self.players.swap(idx, pos);
+                }
+
+                // Move local player in first position.
+                let pos = self
+                    .players
+                    .iter()
+                    .position(|p| &p.player_id == app.player_id())
+                    .expect("Local player not found");
+                self.players.rotate_left(pos);
+            }
             Message::StartHand => {
                 // Prepare for a new hand.
                 for player in &mut self.players {

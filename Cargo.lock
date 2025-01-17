@@ -1065,6 +1065,7 @@ dependencies = [
  "futures-util",
  "log",
  "parking_lot",
+ "rand",
  "snow",
  "tokio",
  "tokio-tungstenite",
