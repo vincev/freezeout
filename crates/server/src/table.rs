@@ -431,6 +431,11 @@ impl PlayersState {
             }
         }
     }
+
+    /// The hand has ended disable any active player.
+    fn end_hand(&mut self) {
+        self.active_player = None;
+    }
 }
 
 /// A pot that contains players bets.
@@ -558,7 +563,7 @@ impl State {
             let msg = Message::PlayerLeft(player.player_id);
             self.broadcast(msg).await;
 
-            if self.count_active() < 2 {
+            if self.players.count_active() < 2 {
                 self.enter_end_hand().await;
                 return;
             }
@@ -580,6 +585,8 @@ impl State {
                         match action {
                             PlayerAction::Fold => {
                                 player.is_active = false;
+                                player.hole_cards = PlayerCards::None;
+                                player.public_cards = PlayerCards::None;
                             }
                             PlayerAction::Call => {
                                 player.bet(*action, self.last_bet);
@@ -598,10 +605,9 @@ impl State {
                             self.next_round().await;
                         } else {
                             self.players.next_player();
+                            self.broadcast_game_update().await;
+                            self.request_action().await;
                         }
-
-                        self.broadcast_game_update().await;
-                        self.request_action().await;
                     }
                 }
             }
@@ -639,7 +645,7 @@ impl State {
         self.players.start_hand();
 
         // If there are fewer than 2 active players end the game.
-        if self.count_active() < 2 {
+        if self.players.count_active() < 2 {
             self.enter_end_hand().await;
             return;
         }
@@ -708,41 +714,46 @@ impl State {
         }
 
         self.hand_state = HandState::FlopBetting;
-        self.start_round();
+        self.start_round().await;
     }
 
     async fn enter_deal_turn(&mut self) {
         self.board.push(self.deck.deal());
 
         self.hand_state = HandState::TurnBetting;
-        self.start_round();
+        self.start_round().await;
     }
 
     async fn enter_deal_river(&mut self) {
         self.board.push(self.deck.deal());
 
         self.hand_state = HandState::RiverBetting;
-        self.start_round();
+        self.start_round().await;
     }
 
     async fn enter_showdown(&mut self) {
         self.hand_state = HandState::Showdown;
-        self.start_round();
+        self.players.end_hand();
+
+        self.update_pots();
 
         for player in self.players.iter_mut() {
+            player.bet = Chips::ZERO;
+            player.action = PlayerAction::None;
             if player.is_active {
                 player.public_cards = player.hole_cards;
-                player.is_active = false;
             }
         }
 
-        // TODO: evaluate cards and find winner.
         self.broadcast_game_update().await;
         self.enter_end_hand().await;
     }
 
     async fn enter_end_hand(&mut self) {
         self.hand_state = HandState::EndHand;
+
+        self.pay_bets();
+        self.broadcast_game_update().await;
 
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
@@ -759,7 +770,7 @@ impl State {
 
     /// Checks if all players in the hand have acted.
     fn is_round_complete(&self) -> bool {
-        if self.count_active() < 2 {
+        if self.players.count_active() < 2 {
             return true;
         }
 
@@ -794,7 +805,7 @@ impl State {
     }
 
     async fn next_round(&mut self) {
-        if self.count_active() < 2 {
+        if self.players.count_active() < 2 {
             self.enter_end_hand().await;
             return;
         }
@@ -813,7 +824,7 @@ impl State {
         }
     }
 
-    fn start_round(&mut self) {
+    async fn start_round(&mut self) {
         self.update_pots();
 
         for player in self.players.iter_mut() {
@@ -826,7 +837,14 @@ impl State {
 
         self.players.start_round();
 
+        self.broadcast_game_update().await;
+        self.request_action().await;
+
         info!("Board: {:#?}", self.board);
+    }
+
+    fn pay_bets(&mut self) {
+        // TODO
     }
 
     fn update_pots(&mut self) {
@@ -883,6 +901,7 @@ impl State {
                 action: p.action,
                 cards: p.public_cards,
                 has_button: p.has_button,
+                is_active: p.is_active,
             })
             .collect();
 
@@ -941,9 +960,5 @@ impl State {
         for player in self.players.iter() {
             player.send(smsg.clone()).await;
         }
-    }
-
-    fn count_active(&self) -> usize {
-        self.players.iter().filter(|p| p.is_active).count()
     }
 }

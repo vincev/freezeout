@@ -31,6 +31,8 @@ pub struct Player {
     pub cards: PlayerCards,
     /// The player has the button.
     pub has_button: bool,
+    /// The player is active in the hand.
+    pub is_active: bool,
 }
 
 impl Player {
@@ -44,6 +46,7 @@ impl Player {
             action: PlayerAction::None,
             cards: PlayerCards::None,
             has_button: false,
+            is_active: true,
         }
     }
 }
@@ -218,10 +221,10 @@ impl GameState {
                 player.bet = update.bet;
                 player.action = update.action;
                 player.has_button = update.has_button;
+                player.is_active = update.is_active;
 
-                // Do not override cards for local player as these are assigned at
-                // players cards dealing.
-                if pos != 0 {
+                // Override cards for local player only if has folded.
+                if pos != 0 || !update.is_active {
                     player.cards = update.cards;
                 }
 

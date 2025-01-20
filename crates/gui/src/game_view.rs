@@ -285,6 +285,10 @@ impl GameView {
         let text_pos = rect.left_top();
         ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
 
+        if !player.is_active {
+            fill_inactive(ui, &bg_rect);
+        }
+
         bg_rect
     }
 
@@ -324,6 +328,10 @@ impl GameView {
             let btn_pos = bg_rect.right_top() + vec2(-10.0, 10.0);
             painter.circle(btn_pos, 6.0, Self::TEXT_COLOR, Stroke::NONE);
         }
+
+        if !player.is_active {
+            fill_inactive(ui, &bg_rect);
+        }
     }
 
     fn paint_player_cards(
@@ -334,6 +342,10 @@ impl GameView {
         align: &Align2,
         textures: &Textures,
     ) {
+        if !player.is_active {
+            return;
+        }
+
         let (tx1, tx2) = match player.cards {
             PlayerCards::None => return,
             PlayerCards::Covered => (textures.back(), textures.back()),
@@ -579,6 +591,15 @@ fn paint_border(ui: &mut Ui, rect: &Rect) {
         let stroke = Stroke::new(1.0, Color32::from_gray(color as u8));
         ui.painter().rect_stroke(border_rect, 5.0, stroke);
     }
+}
+
+fn fill_inactive(ui: &mut Ui, rect: &Rect) {
+    ui.painter().rect(
+        *rect,
+        2.0,
+        Color32::from_rgba_unmultiplied(60, 60, 60, 140),
+        Stroke::NONE,
+    );
 }
 
 fn player_rect(rect: &Rect, align: &Align2) -> Rect {

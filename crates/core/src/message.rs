@@ -86,6 +86,8 @@ pub struct PlayerUpdate {
     pub cards: PlayerCards,
     /// The player has the button.
     pub has_button: bool,
+    /// The player is active in the hand.
+    pub is_active: bool,
 }
 
 /// A Player action.
