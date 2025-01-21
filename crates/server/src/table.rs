@@ -379,7 +379,7 @@ impl PlayersState {
 
     /// Activate the next player if there is more than one active player.
     fn next_player(&mut self) {
-        if self.count_active() > 1 && self.active_player.is_some() {
+        if self.count_active() > 0 && self.active_player.is_some() {
             loop {
                 let active_player = self.active_player.get_or_insert_default();
                 *active_player = (*active_player + 1) % self.players.len();
@@ -601,10 +601,11 @@ impl State {
                             _ => {}
                         }
 
+                        self.players.next_player();
+
                         if self.is_round_complete() {
                             self.next_round().await;
                         } else {
-                            self.players.next_player();
                             self.broadcast_game_update().await;
                             self.request_action().await;
                         }
@@ -733,7 +734,6 @@ impl State {
 
     async fn enter_showdown(&mut self) {
         self.hand_state = HandState::Showdown;
-        self.players.end_hand();
 
         self.update_pots();
 
@@ -753,6 +753,8 @@ impl State {
         self.hand_state = HandState::EndHand;
 
         self.pay_bets();
+
+        self.players.end_hand();
         self.broadcast_game_update().await;
 
         if self.players.count_with_chips() < 2 {
@@ -766,6 +768,18 @@ impl State {
         self.hand_state = HandState::EndGame;
 
         // TODO: End game logic.
+    }
+
+    fn pay_bets(&mut self) {
+        if self.players.count_active() == 1 {
+            if let Some(player) = self.players.active_player() {
+                for pot in &mut self.pots {
+                    player.chips += pot.amount;
+                }
+
+                self.pots.clear();
+            }
+        }
     }
 
     /// Checks if all players in the hand have acted.
@@ -841,10 +855,6 @@ impl State {
         self.request_action().await;
 
         info!("Board: {:#?}", self.board);
-    }
-
-    fn pay_bets(&mut self) {
-        // TODO
     }
 
     fn update_pots(&mut self) {
