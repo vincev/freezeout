@@ -19,7 +19,7 @@ use tokio::{
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
     message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
-    poker::{Card, Chips, Deck, PlayerCards, TableId},
+    poker::{Card, Chips, Deck, HandValue, PlayerCards, TableId},
 };
 
 /// Table state shared by all players who joined the table.
@@ -442,7 +442,7 @@ impl PlayersState {
 #[derive(Debug, Default)]
 struct Pot {
     players: AHashSet<PeerId>,
-    amount: Chips,
+    chips: Chips,
 }
 
 /// Internal table state.
@@ -771,14 +771,41 @@ impl State {
     }
 
     fn pay_bets(&mut self) {
-        if self.players.count_active() == 1 {
-            if let Some(player) = self.players.active_player() {
-                for pot in &mut self.pots {
-                    player.chips += pot.amount;
+        match self.players.count_active() {
+            1 => {
+                // If one player left gets all the chips.
+                if let Some(player) = self.players.active_player() {
+                    for pot in self.pots.drain(..) {
+                        player.chips += pot.chips;
+                    }
                 }
-
-                self.pots.clear();
             }
+            n if n > 1 => {
+                // With more than 1 player we need to compare hands for each pot
+                for pot in self.pots.drain(..) {
+                    // Find the winner amongst all the active players in the pot.
+                    let winner = self
+                        .players
+                        .iter_mut()
+                        .filter(|p| p.is_active && pot.players.contains(&p.player_id))
+                        .filter_map(|p| match p.hole_cards {
+                            PlayerCards::None | PlayerCards::Covered => None,
+                            PlayerCards::Cards(c1, c2) => Some((p, c1, c2)),
+                        })
+                        .map(|(p, c1, c2)| {
+                            let mut cards = vec![c1, c2];
+                            cards.extend_from_slice(&self.board);
+                            let hv = HandValue::eval(&cards);
+                            (p, hv)
+                        })
+                        .max_by(|p1, p2| p1.1.cmp(&p2.1));
+
+                    if let Some((p, _hv)) = winner {
+                        p.chips += pot.chips;
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -853,8 +880,6 @@ impl State {
 
         self.broadcast_game_update().await;
         self.request_action().await;
-
-        info!("Board: {:#?}", self.board);
     }
 
     fn update_pots(&mut self) {
@@ -880,7 +905,7 @@ impl State {
                     let pot = self.pots.last_mut().unwrap();
                     if player.bet > Chips::ZERO {
                         player.bet -= min_bet;
-                        pot.amount += min_bet;
+                        pot.chips += min_bet;
 
                         if !pot.players.contains(&player.player_id) {
                             pot.players.insert(player.player_id.clone());
@@ -895,8 +920,6 @@ impl State {
                 }
             }
         }
-
-        info!("Pots: {:#?}", self.pots);
     }
 
     /// Broadcast a game state update to all connected players.
@@ -918,7 +941,7 @@ impl State {
         let pot = self
             .pots
             .iter()
-            .map(|p| p.amount)
+            .map(|p| p.chips)
             .fold(Chips::ZERO, |acc, c| acc + c);
 
         let msg = Message::GameUpdate {

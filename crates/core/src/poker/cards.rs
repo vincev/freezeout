@@ -224,6 +224,15 @@ impl Default for Deck {
     }
 }
 
+impl IntoIterator for Deck {
+    type Item = Card;
+    type IntoIter = std::vec::IntoIter<Card>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.cards.into_iter()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

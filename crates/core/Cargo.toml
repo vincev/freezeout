@@ -16,3 +16,6 @@ bs58 = "0.5.1"
 ed25519-dalek = { version = "2.1.1", default-features = false, features = ["rand_core", "serde"] }
 rand = { workspace = true }
 serde = { workspace = true }
+
+[dev-dependencies]
+itertools = "0.14.0"

@@ -8,6 +8,9 @@ use std::{fmt, ops, sync::atomic};
 mod cards;
 pub use cards::{Card, Deck, Rank, Suit};
 
+mod eval;
+pub use eval::{HandRank, HandValue};
+
 /// A unique table identifier.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct TableId(u32);
