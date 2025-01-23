@@ -82,6 +82,8 @@ pub struct PlayerUpdate {
     pub bet: Chips,
     /// The last player action.
     pub action: PlayerAction,
+    /// The player action timer.
+    pub action_timer: Option<u16>,
     /// The player cards.
     pub cards: PlayerCards,
     /// The player has the button.

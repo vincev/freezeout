@@ -27,6 +27,8 @@ pub struct Player {
     pub bet: Chips,
     /// The last player action.
     pub action: PlayerAction,
+    /// The last player action.
+    pub action_timer: Option<u16>,
     /// This playe cards.
     pub cards: PlayerCards,
     /// The player has the button.
@@ -44,6 +46,7 @@ impl Player {
             chips,
             bet: Chips::ZERO,
             action: PlayerAction::None,
+            action_timer: None,
             cards: PlayerCards::None,
             has_button: false,
             is_active: true,
@@ -209,6 +212,11 @@ impl GameState {
         &self.board
     }
 
+    /// Checks if the local player is active.
+    pub fn is_active(&self) -> bool {
+        !self.players.is_empty() && self.players[0].is_active
+    }
+
     fn update_players(&mut self, updates: &[PlayerUpdate]) {
         for update in updates {
             if let Some(pos) = self
@@ -220,15 +228,20 @@ impl GameState {
                 player.chips = update.chips;
                 player.bet = update.bet;
                 player.action = update.action;
+                player.action_timer = update.action_timer;
                 player.has_button = update.has_button;
                 player.is_active = update.is_active;
 
-                // Override cards for local player only if has folded.
-                if pos != 0 || !update.is_active {
+                // Do not override cards for the local player as they are updated
+                // when we get a DealCards message.
+                if pos != 0 {
                     player.cards = update.cards;
                 }
 
-                info!("Updated player {player:?}");
+                // If local player has folded remove its cards.
+                if pos == 0 && !player.is_active {
+                    player.cards = PlayerCards::None;
+                }
             }
         }
     }

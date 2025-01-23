@@ -140,7 +140,7 @@ struct TableTask {
 impl TableTask {
     async fn run(&mut self) -> Result<()> {
         let mut state = State::new(self.table_id, self.seats, self.sk.clone());
-        let mut ticks = time::interval(Duration::from_millis(1000));
+        let mut ticks = time::interval(Duration::from_millis(500));
 
         loop {
             tokio::select! {
@@ -209,6 +209,8 @@ struct Player {
     bet: Chips,
     /// The last player action.
     action: PlayerAction,
+    /// The player action timer.
+    action_timer: Option<Instant>,
     /// This player cards that are visible to all other players.
     public_cards: PlayerCards,
     /// This player private cards.
@@ -233,6 +235,7 @@ impl Player {
             chips,
             bet: Chips::default(),
             action: PlayerAction::None,
+            action_timer: None,
             public_cards: PlayerCards::None,
             hole_cards: PlayerCards::None,
             is_active: true,
@@ -269,6 +272,14 @@ impl Player {
         }
 
         self.action = action;
+    }
+
+    fn fold(&mut self) {
+        self.is_active = false;
+        self.action = PlayerAction::Fold;
+        self.hole_cards = PlayerCards::None;
+        self.public_cards = PlayerCards::None;
+        self.action_timer = None;
     }
 }
 
@@ -465,6 +476,8 @@ struct State {
 }
 
 impl State {
+    const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
+
     /// Create a new state.
     fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>) -> Self {
         Self {
@@ -582,11 +595,11 @@ impl State {
                     // Only process responses coming from active player.
                     if player.player_id == msg.sender() {
                         player.action = *action;
+                        player.action_timer = None;
+
                         match action {
                             PlayerAction::Fold => {
-                                player.is_active = false;
-                                player.hole_cards = PlayerCards::None;
-                                player.public_cards = PlayerCards::None;
+                                player.fold();
                             }
                             PlayerAction::Call => {
                                 player.bet(*action, self.last_bet);
@@ -601,14 +614,7 @@ impl State {
                             _ => {}
                         }
 
-                        self.players.next_player();
-
-                        if self.is_round_complete() {
-                            self.next_round().await;
-                        } else {
-                            self.broadcast_game_update().await;
-                            self.request_action().await;
-                        }
+                        self.action_update().await;
                     }
                 }
             }
@@ -623,6 +629,34 @@ impl State {
                 self.new_hand_start_time = None;
                 self.enter_start_hand().await;
             }
+        }
+
+        // Check if there is any player with an active timer.
+        if self.players.iter().any(|p| p.action_timer.is_some()) {
+            let player = self
+                .players
+                .iter_mut()
+                .find(|p| p.action_timer.is_some())
+                .unwrap();
+
+            // If timer has expired fold otherwise broadcast timer update.
+            if player.action_timer.unwrap().elapsed() > Self::ACTION_TIMEOUT {
+                player.fold();
+                self.action_update().await;
+            } else {
+                self.broadcast_game_update().await;
+            }
+        }
+    }
+
+    async fn action_update(&mut self) {
+        self.players.next_player();
+
+        if self.is_round_complete() {
+            self.next_round().await;
+        } else {
+            self.broadcast_game_update().await;
+            self.request_action().await;
         }
     }
 
@@ -927,14 +961,23 @@ impl State {
         let players = self
             .players
             .iter()
-            .map(|p| PlayerUpdate {
-                player_id: p.player_id.clone(),
-                chips: p.chips,
-                bet: p.bet,
-                action: p.action,
-                cards: p.public_cards,
-                has_button: p.has_button,
-                is_active: p.is_active,
+            .map(|p| {
+                let action_timer = p.action_timer.map(|t| {
+                    Self::ACTION_TIMEOUT
+                        .saturating_sub(t.elapsed())
+                        .as_secs_f32() as u16
+                });
+
+                PlayerUpdate {
+                    player_id: p.player_id.clone(),
+                    chips: p.chips,
+                    bet: p.bet,
+                    action: p.action,
+                    action_timer,
+                    cards: p.public_cards,
+                    has_button: p.has_button,
+                    is_active: p.is_active,
+                }
             })
             .collect();
 
@@ -975,6 +1018,8 @@ impl State {
             if player.chips + player.bet > self.last_bet && self.last_bet > Chips::ZERO {
                 actions.push(PlayerAction::Raise);
             }
+
+            player.action_timer = Some(Instant::now());
 
             let msg = Message::ActionRequest {
                 player_id: player.player_id.clone(),

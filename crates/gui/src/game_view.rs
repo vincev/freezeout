@@ -46,7 +46,16 @@ impl View for GameView {
                 }
                 ConnectionEvent::Message(msg) => {
                     self.game_state.handle_message(msg, app);
-                    self.action_request = self.game_state.take_action_request();
+
+                    // If we got an action request show it in the UI.
+                    if let req @ Some(_) = self.game_state.take_action_request() {
+                        self.action_request = req;
+                    }
+
+                    // Reset action request if this player has folded.
+                    if !self.game_state.is_active() {
+                        self.action_request = None;
+                    }
                 }
             }
         }
@@ -282,8 +291,18 @@ impl GameView {
         let bg_rect = rect.expand(5.0);
         paint_border(ui, &bg_rect);
 
-        let text_pos = rect.left_top();
-        ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
+        if let Some(timer) = player.action_timer {
+            ui.painter().text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                timer.to_string(),
+                FontId::new(50.0, FontFamily::Monospace),
+                Self::TEXT_COLOR,
+            );
+        } else {
+            let text_pos = rect.left_top();
+            ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
+        }
 
         if !player.is_active {
             fill_inactive(ui, &bg_rect);
