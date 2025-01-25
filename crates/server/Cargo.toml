@@ -10,6 +10,7 @@ version = "0.1.0"
 ahash = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
+directories = "6.0.0"
 env_logger = { workspace = true }
 freezeout-core = { path = "../core" }
 futures-util = { version = "0.3.31", default-features = false, features = ["sink"] }

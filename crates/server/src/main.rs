@@ -3,6 +3,7 @@
 use clap::Parser;
 use freezeout_server::server;
 use log::error;
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 struct Cli {
@@ -18,6 +19,9 @@ struct Cli {
     /// Number of seats per table.
     #[clap(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(2..=6))]
     seats: u8,
+    /// Server identity keypair path.
+    #[clap(long)]
+    keypair_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -34,6 +38,7 @@ async fn main() {
         port: cli.port,
         tables: cli.tables as usize,
         seats: cli.seats as usize,
+        keypair_path: cli.keypair_path,
     };
 
     if let Err(e) = server::run(config).await {

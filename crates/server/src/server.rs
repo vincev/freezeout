@@ -4,7 +4,11 @@
 //! Freezeout Poker server entry point.
 use anyhow::{anyhow, bail, Result};
 use log::{error, info};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::{
     net::{TcpListener, TcpStream},
     signal,
@@ -33,6 +37,8 @@ pub struct Config {
     pub tables: usize,
     /// The number of seats per table.
     pub seats: usize,
+    /// Server identity keypair path.
+    pub keypair_path: Option<PathBuf>,
 }
 
 /// The server that handles client connection and state.
@@ -56,6 +62,8 @@ struct TablesSet(Vec<Arc<Table>>);
 
 /// Server entry point.
 pub async fn run(config: Config) -> Result<()> {
+    let sk = load_signing_key(&config.keypair_path)?;
+
     let addr = format!("{}:{}", config.address, config.port);
     info!("Starting server listening on {}", addr);
 
@@ -66,8 +74,6 @@ pub async fn run(config: Config) -> Result<()> {
     let shutdown_signal = signal::ctrl_c();
     let (shutdown_broadcast_tx, _) = broadcast::channel(1);
     let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel(1);
-
-    let sk = Arc::new(SigningKey::default());
 
     let tables = Arc::new(TablesSet::new(
         config.tables,
@@ -276,5 +282,35 @@ impl Handler {
         table.leave(&player_id).await;
 
         res
+    }
+}
+
+fn load_signing_key(path: &Option<PathBuf>) -> Result<Arc<SigningKey>> {
+    fn load_or_create(path: &Path) -> Result<Arc<SigningKey>> {
+        let keypair_path = path.join("server.phrase");
+        let keypair = if keypair_path.exists() {
+            info!("Loading keypair {}", keypair_path.display());
+            let passphrase = std::fs::read_to_string(keypair_path)?;
+            SigningKey::from_phrase(&passphrase)?
+        } else {
+            let keypair = SigningKey::default();
+            std::fs::create_dir_all(path)?;
+            std::fs::write(&keypair_path, keypair.phrase().as_bytes())?;
+            info!("Writing keypair {}", keypair_path.display());
+            keypair
+        };
+
+        Ok(Arc::new(keypair))
+    }
+
+    // Load keypair from user path or try to create one if it doesn't exist.
+    if let Some(path) = path {
+        load_or_create(path)
+    } else {
+        let Some(proj_dirs) = directories::ProjectDirs::from("", "", "freezeout") else {
+            bail!("Cannot find project dirs for keypair");
+        };
+
+        load_or_create(proj_dirs.config_dir())
     }
 }
