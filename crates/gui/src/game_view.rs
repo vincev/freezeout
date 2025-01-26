@@ -6,18 +6,17 @@ use eframe::egui::*;
 use log::error;
 
 use freezeout_core::{
-    message::{Message, PlayerAction},
+    message::PlayerAction,
     poker::{Chips, PlayerCards},
 };
 
-use crate::{ActionRequest, App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
+use crate::{App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
 
 /// Connect view.
 pub struct GameView {
     connection_closed: bool,
     game_state: GameState,
     error: Option<String>,
-    action_request: Option<ActionRequest>,
     bet_params: Option<BetParams>,
 }
 
@@ -46,16 +45,6 @@ impl View for GameView {
                 }
                 ConnectionEvent::Message(msg) => {
                     self.game_state.handle_message(msg, app);
-
-                    // If we got an action request show it in the UI.
-                    if let req @ Some(_) = self.game_state.take_action_request() {
-                        self.action_request = req;
-                    }
-
-                    // Reset action request if this player has folded.
-                    if !self.game_state.is_active() {
-                        self.action_request = None;
-                    }
                 }
             }
         }
@@ -105,7 +94,6 @@ impl GameView {
             connection_closed: false,
             game_state: GameState::default(),
             error: None,
-            action_request: None,
             bet_params: None,
         }
     }
@@ -411,7 +399,7 @@ impl GameView {
 
         paint_border(ui, &rect);
 
-        if !matches!(player.action, PlayerAction::None) {
+        if !matches!(player.action, PlayerAction::None) || player.winnings > Chips::ZERO {
             let mut action_rect = rect.shrink(1.0);
             action_rect.set_height(rect.height() / 2.0);
 
@@ -424,18 +412,31 @@ impl GameView {
             ui.painter()
                 .rect(action_rect, rounding, Self::TEXT_COLOR, Stroke::NONE);
 
+            let label = if player.winnings > Chips::ZERO {
+                "WINNER"
+            } else {
+                player.action.label()
+            };
+
             ui.painter().text(
                 rect.left_top() + vec2(5.0, 3.0),
                 Align2::LEFT_TOP,
-                player.action.label(),
+                label,
                 FontId::new(13.0, FontFamily::Monospace),
                 Self::BG_COLOR,
             );
 
-            if player.bet > Chips::ZERO {
+            if player.bet > Chips::ZERO || player.winnings > Chips::ZERO {
                 let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
+
+                let amount = if player.bet > Chips::ZERO {
+                    player.bet.to_string()
+                } else {
+                    player.winnings.to_string()
+                };
+
                 let galley = ui.painter().layout_no_wrap(
-                    player.bet.to_string(),
+                    amount,
                     FontId::new(13.0, FontFamily::Monospace),
                     Self::TEXT_COLOR,
                 );
@@ -447,7 +448,9 @@ impl GameView {
     }
 
     fn paint_action_controls(&mut self, ui: &mut Ui, rect: &Rect, app: &mut App) {
-        if let Some(req) = &self.action_request {
+        let mut send_action = None;
+
+        if let Some(req) = self.game_state.action_request() {
             let rect = player_rect(rect, &Align2::CENTER_BOTTOM);
 
             let mut btn_rect = Rect::from_min_size(
@@ -477,15 +480,15 @@ impl GameView {
                 if ui.put(btn_rect.shrink(2.0), btn).clicked() {
                     match action {
                         PlayerAction::Fold | PlayerAction::Check | PlayerAction::Call => {
+                            send_action = Some((*action, Chips::ZERO));
                             self.bet_params = None;
-                            self.send_action(*action, Chips::ZERO, app);
-                            return;
+                            break;
                         }
                         PlayerAction::Bet | PlayerAction::Raise => {
                             if let Some(params) = &self.bet_params {
-                                self.send_action(*action, params.raise_value.into(), app);
+                                send_action = Some((*action, params.raise_value.into()));
                                 self.bet_params = None;
-                                return;
+                                break;
                             } else {
                                 self.bet_params = Some(BetParams {
                                     min_raise: req.min_raise.into(),
@@ -502,6 +505,10 @@ impl GameView {
             }
 
             self.paint_betting_controls(ui, &rect);
+        }
+
+        if let Some((action, chips)) = send_action {
+            self.game_state.send_action(action, chips, app);
         }
     }
 
@@ -591,13 +598,6 @@ impl GameView {
                 params.raise_value = params.raise_value.saturating_add(big_blind).min(max_bet);
             }
         }
-    }
-
-    fn send_action(&mut self, action: PlayerAction, amount: Chips, app: &mut App) {
-        let msg = Message::ActionResponse { action, amount };
-
-        app.send_message(msg);
-        self.action_request = None;
     }
 }
 

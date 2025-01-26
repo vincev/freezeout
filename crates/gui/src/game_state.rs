@@ -25,6 +25,8 @@ pub struct Player {
     pub chips: Chips,
     /// The last player bet.
     pub bet: Chips,
+    /// This player winnings.
+    pub winnings: Chips,
     /// The last player action.
     pub action: PlayerAction,
     /// The last player action.
@@ -45,6 +47,7 @@ impl Player {
             nickname,
             chips,
             bet: Chips::ZERO,
+            winnings: Chips::ZERO,
             action: PlayerAction::None,
             action_timer: None,
             cards: PlayerCards::None,
@@ -145,6 +148,17 @@ impl GameState {
                 for player in &mut self.players {
                     player.cards = PlayerCards::None;
                     player.action = PlayerAction::None;
+                    player.winnings = Chips::ZERO;
+                }
+            }
+            Message::EndHand { winners } => {
+                self.action_request = None;
+
+                // Update winnings for each winning player.
+                for (player_id, chips) in winners {
+                    if let Some(p) = self.players.iter_mut().find(|p| &p.player_id == player_id) {
+                        p.winnings = *chips;
+                    }
                 }
             }
             Message::DealCards(c1, c2) => {
@@ -193,8 +207,8 @@ impl GameState {
     }
 
     /// Returns the requested player action if any.
-    pub fn take_action_request(&mut self) -> Option<ActionRequest> {
-        self.action_request.take()
+    pub fn action_request(&self) -> Option<&ActionRequest> {
+        self.action_request.as_ref()
     }
 
     /// Returns a reference to the players.
@@ -215,6 +229,14 @@ impl GameState {
     /// Checks if the local player is active.
     pub fn is_active(&self) -> bool {
         !self.players.is_empty() && self.players[0].is_active
+    }
+
+    /// Send the action to the server.
+    pub fn send_action(&mut self, action: PlayerAction, amount: Chips, app: &mut App) {
+        let msg = Message::ActionResponse { action, amount };
+
+        app.send_message(msg);
+        self.action_request = None;
     }
 
     fn update_players(&mut self, updates: &[PlayerUpdate]) {

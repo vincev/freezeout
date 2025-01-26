@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Table state types.
-use ahash::AHashSet;
+use ahash::{AHashMap, AHashSet};
 use anyhow::{bail, Result};
 use log::{error, info};
 use rand::seq::SliceRandom;
@@ -257,6 +257,12 @@ impl Player {
         self.hole_cards = PlayerCards::None;
     }
 
+    /// Set state on hand end.
+    fn end_hand(&mut self) {
+        self.action = PlayerAction::None;
+        self.action_timer = None;
+    }
+
     /// Updates this player bets to the given chips amount.
     fn bet(&mut self, action: PlayerAction, chips: Chips) {
         // How much to bet considering previous bets.
@@ -446,6 +452,7 @@ impl PlayersState {
     /// The hand has ended disable any active player.
     fn end_hand(&mut self) {
         self.active_player = None;
+        self.players.iter_mut().for_each(Player::end_hand);
     }
 }
 
@@ -786,10 +793,11 @@ impl State {
     async fn enter_end_hand(&mut self) {
         self.hand_state = HandState::EndHand;
 
-        self.pay_bets();
+        let winners = self.pay_bets();
 
         self.players.end_hand();
         self.broadcast_game_update().await;
+        self.broadcast(Message::EndHand { winners }).await;
 
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
@@ -804,13 +812,16 @@ impl State {
         // TODO: End game logic.
     }
 
-    fn pay_bets(&mut self) {
+    fn pay_bets(&mut self) -> Vec<(PeerId, Chips)> {
+        let mut winners = AHashMap::new();
+
         match self.players.count_active() {
             1 => {
                 // If one player left gets all the chips.
                 if let Some(player) = self.players.active_player() {
                     for pot in self.pots.drain(..) {
                         player.chips += pot.chips;
+                        *winners.entry(player.player_id.clone()).or_default() += pot.chips;
                     }
                 }
             }
@@ -836,11 +847,14 @@ impl State {
 
                     if let Some((p, _hv)) = winner {
                         p.chips += pot.chips;
+                        *winners.entry(p.player_id.clone()).or_default() += pot.chips;
                     }
                 }
             }
             _ => {}
         }
+
+        winners.into_iter().collect()
     }
 
     /// Checks if all players in the hand have acted.

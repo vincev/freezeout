@@ -36,6 +36,11 @@ pub enum Message {
     StartGame(Vec<PeerId>),
     /// Tell players to prepare for a new hand.
     StartHand,
+    /// Tell players the hand has completed.
+    EndHand {
+        /// List of players who won chips in the hand.
+        winners: Vec<(PeerId, Chips)>,
+    },
     /// Deal cards to a player.
     DealCards(Card, Card),
     /// A player left the table.
