@@ -579,7 +579,11 @@ impl State {
     async fn leave(&mut self, player_id: &PeerId) {
         let active_is_leaving = self.players.is_active(player_id);
         if let Some(player) = self.players.leave(player_id) {
-            // TODO: updated pots.
+            // Store the player bets into the pot.
+            if let Some(pot) = self.pots.last_mut() {
+                pot.chips += player.bet;
+            }
+
             let msg = Message::PlayerLeft(player.player_id);
             self.broadcast(msg).await;
 
