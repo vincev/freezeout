@@ -22,6 +22,8 @@ use freezeout_core::{
     poker::{Card, Chips, Deck, HandValue, PlayerCards, TableId},
 };
 
+use crate::db::{Db, Player as DbPlayer};
+
 /// Table state shared by all players who joined the table.
 #[derive(Debug)]
 pub struct Table {
@@ -40,7 +42,6 @@ pub enum TableMessage {
 
 /// Command for the table task.
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
 enum TableCommand {
     /// Join this table.
     Join(
@@ -59,6 +60,7 @@ impl Table {
     pub fn new(
         seats: usize,
         sk: Arc<SigningKey>,
+        db: Db,
         shutdown_broadcast_rx: broadcast::Receiver<()>,
         shutdown_complete_tx: mpsc::Sender<()>,
     ) -> Self {
@@ -71,6 +73,7 @@ impl Table {
             table_id: TableId::new_id(),
             seats,
             sk,
+            db,
             commands_rx,
             shutdown_broadcast_rx,
             _shutdown_complete_tx: shutdown_complete_tx,
@@ -129,6 +132,8 @@ struct TableTask {
     seats: usize,
     /// Table key.
     sk: Arc<SigningKey>,
+    /// Game db/
+    db: Db,
     /// Channel for receiving table commands.
     commands_rx: mpsc::Receiver<TableCommand>,
     /// Channel for listening shutdown notification.
@@ -139,7 +144,7 @@ struct TableTask {
 
 impl TableTask {
     async fn run(&mut self) -> Result<()> {
-        let mut state = State::new(self.table_id, self.seats, self.sk.clone());
+        let mut state = State::new(self.table_id, self.seats, self.sk.clone(), self.db.clone());
         let mut ticks = time::interval(Duration::from_millis(500));
 
         loop {
@@ -280,12 +285,21 @@ impl Player {
         self.action = action;
     }
 
+    /// Sets this player in fold state.
     fn fold(&mut self) {
         self.is_active = false;
         self.action = PlayerAction::Fold;
         self.hole_cards = PlayerCards::None;
         self.public_cards = PlayerCards::None;
         self.action_timer = None;
+    }
+
+    /// Returns a DbPlayer for db updates.
+    fn db_player(&self) -> DbPlayer {
+        DbPlayer {
+            player_id: self.player_id.clone(),
+            chips: self.chips,
+        }
     }
 }
 
@@ -470,6 +484,7 @@ struct State {
     seats: usize,
     join_chips: Chips,
     sk: Arc<SigningKey>,
+    db: Db,
     hand_state: HandState,
     small_blind: Chips,
     big_blind: Chips,
@@ -486,12 +501,13 @@ impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
 
     /// Create a new state.
-    fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>) -> Self {
+    fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
         Self {
             table_id,
             seats,
             join_chips: 1_000_000.into(),
             sk,
+            db,
             hand_state: HandState::WaitForPlayers,
             small_blind: 10_000.into(),
             big_blind: 20_000.into(),
@@ -523,23 +539,29 @@ impl State {
             bail!("Player has already joined");
         }
 
-        // Tell all players at the table that a player joined.
-        let msg = Message::PlayerJoined {
-            player_id: player_id.clone(),
-            nickname: nickname.to_string(),
-            chips: self.join_chips,
-        };
-        self.broadcast(msg).await;
+        // Create new player.
+        let db_player = self
+            .db
+            .get_or_insert_player(player_id.clone(), self.join_chips)
+            .await?;
 
         let (table_tx, table_rx) = mpsc::channel(128);
+
+        // Add new player to the table.
+        let join_player = Player::new(
+            player_id.clone(),
+            nickname.to_string(),
+            db_player.chips,
+            table_tx,
+        );
 
         // Send a table joined confirmation to the player who joined.
         let msg = Message::TableJoined {
             table_id: self.table_id,
-            chips: self.join_chips,
+            chips: join_player.chips,
         };
         let smsg = SignedMessage::new(&self.sk, msg);
-        let _ = table_tx.send(TableMessage::Send(smsg)).await;
+        let _ = join_player.table_tx.send(TableMessage::Send(smsg)).await;
 
         // Send joined message for each player at the table to the new player.
         for player in self.players.iter() {
@@ -549,21 +571,20 @@ impl State {
                 chips: player.chips,
             };
             let smsg = SignedMessage::new(&self.sk, msg);
-            let _ = table_tx.send(TableMessage::Send(smsg)).await;
+            let _ = join_player.table_tx.send(TableMessage::Send(smsg)).await;
         }
 
+        // Tell all players at the table that a player joined. Note that because the
+        // player has not beed added to the table yet it won't get the broadcast.
+        let msg = Message::PlayerJoined {
+            player_id: player_id.clone(),
+            nickname: nickname.to_string(),
+            chips: join_player.chips,
+        };
+        self.broadcast(msg).await;
+
         // Add new player to the table.
-        let player = Player::new(
-            player_id.clone(),
-            nickname.to_string(),
-            self.join_chips,
-            table_tx,
-        );
-
-        // TODO TESTING: remove this.
-        self.join_chips += Chips::from(250_000);
-
-        self.players.join(player);
+        self.players.join(join_player);
 
         info!("Player {player_id} joined table {}", self.table_id);
 
@@ -584,8 +605,14 @@ impl State {
                 pot.chips += player.bet;
             }
 
-            let msg = Message::PlayerLeft(player.player_id);
+            // Tell the other players this player has left.
+            let msg = Message::PlayerLeft(player_id.clone());
             self.broadcast(msg).await;
+
+            // Update this player database state.
+            if let Err(e) = self.db.update(vec![player.db_player()]).await {
+                error!("Player {} db update failed {}", player_id.digits(), e);
+            }
 
             if self.players.count_active() < 2 {
                 self.enter_end_hand().await;
@@ -799,10 +826,18 @@ impl State {
 
         let winners = self.pay_bets();
 
+        // Update players and broadcast update to all players.
         self.players.end_hand();
         self.broadcast_game_update().await;
         self.broadcast(Message::EndHand { winners }).await;
 
+        // Update players db state.
+        let db_players = self.players.iter().map(|p| p.db_player()).collect();
+        if let Err(e) = self.db.update(db_players).await {
+            error!("Db players update failed {e}");
+        }
+
+        // End game or set timer to start new hand.
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
         } else {

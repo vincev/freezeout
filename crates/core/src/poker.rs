@@ -39,6 +39,11 @@ pub struct Chips(u32);
 impl Chips {
     /// The zero chips.
     pub const ZERO: Chips = Chips(0);
+
+    /// The integer amount.
+    pub fn amount(&self) -> u32 {
+        self.0
+    }
 }
 
 impl From<u32> for Chips {

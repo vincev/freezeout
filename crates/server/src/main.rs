@@ -22,6 +22,9 @@ struct Cli {
     /// Server identity keypair path.
     #[clap(long)]
     keypair_path: Option<PathBuf>,
+    /// Game database path.
+    #[clap(long)]
+    db_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -39,6 +42,7 @@ async fn main() {
         tables: cli.tables as usize,
         seats: cli.seats as usize,
         keypair_path: cli.keypair_path,
+        db_path: cli.db_path,
     };
 
     if let Err(e) = server::run(config).await {

@@ -23,6 +23,7 @@ use freezeout_core::{
 
 use crate::{
     connection::{self, EncryptedConnection},
+    db::Db,
     table::{Table, TableMessage},
 };
 
@@ -39,6 +40,8 @@ pub struct Config {
     pub seats: usize,
     /// Server identity keypair path.
     pub keypair_path: Option<PathBuf>,
+    /// Game database path.
+    pub db_path: Option<PathBuf>,
 }
 
 /// The server that handles client connection and state.
@@ -63,6 +66,7 @@ struct TablesSet(Vec<Arc<Table>>);
 /// Server entry point.
 pub async fn run(config: Config) -> Result<()> {
     let sk = load_signing_key(&config.keypair_path)?;
+    let db = open_database(&config.db_path)?;
 
     let addr = format!("{}:{}", config.address, config.port);
     info!("Starting server listening on {}", addr);
@@ -79,6 +83,7 @@ pub async fn run(config: Config) -> Result<()> {
         config.tables,
         config.seats,
         sk.clone(),
+        db,
         &shutdown_broadcast_tx,
         &shutdown_complete_tx,
     ));
@@ -168,6 +173,7 @@ impl TablesSet {
         tables: usize,
         seats: usize,
         sk: Arc<SigningKey>,
+        db: Db,
         shutdown_broadcast_tx: &broadcast::Sender<()>,
         shutdown_complete_tx: &mpsc::Sender<()>,
     ) -> Self {
@@ -177,6 +183,7 @@ impl TablesSet {
                     Arc::new(Table::new(
                         seats,
                         sk.clone(),
+                        db.clone(),
                         shutdown_broadcast_tx.subscribe(),
                         shutdown_complete_tx.clone(),
                     ))
@@ -308,7 +315,32 @@ fn load_signing_key(path: &Option<PathBuf>) -> Result<Arc<SigningKey>> {
         load_or_create(path)
     } else {
         let Some(proj_dirs) = directories::ProjectDirs::from("", "", "freezeout") else {
-            bail!("Cannot find project dirs for keypair");
+            bail!("Cannot find project dirs");
+        };
+
+        load_or_create(proj_dirs.config_dir())
+    }
+}
+
+fn open_database(path: &Option<PathBuf>) -> Result<Db> {
+    fn load_or_create(path: &Path) -> Result<Db> {
+        let db_path = path.join("game.db");
+        if db_path.exists() {
+            info!("Loading database {}", db_path.display());
+            Db::open(db_path)
+        } else {
+            std::fs::create_dir_all(path)?;
+            info!("Writing database {}", db_path.display());
+            Db::open(db_path)
+        }
+    }
+
+    // Load database from user path or try to create one if it doesn't exist.
+    if let Some(path) = path {
+        load_or_create(path)
+    } else {
+        let Some(proj_dirs) = directories::ProjectDirs::from("", "", "freezeout") else {
+            bail!("Cannot find project dirs");
         };
 
         load_or_create(proj_dirs.config_dir())
