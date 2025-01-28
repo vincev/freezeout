@@ -21,13 +21,15 @@ pub struct Player {
 /// Database for persisting game and players state.
 #[derive(Debug, Clone)]
 pub struct Db {
-    db: Arc<Mutex<Connection>>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl Db {
     /// Open a database.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let conn = Connection::open(path)?;
+
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
 
         // Create tables
         conn.execute(
@@ -41,17 +43,17 @@ impl Db {
         )?;
 
         Ok(Db {
-            db: Arc::new(Mutex::new(conn)),
+            conn: Arc::new(Mutex::new(conn)),
         })
     }
 
     /// Updates a playe state.
     pub async fn update(&self, players: Vec<Player>) -> Result<()> {
-        let db = self.db.clone();
+        let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
-            let mut db = db.lock();
+            let mut conn = conn.lock();
 
-            let tx = db.transaction()?;
+            let tx = conn.transaction()?;
 
             for player in players {
                 tx.execute(
@@ -72,11 +74,11 @@ impl Db {
 
     /// Get a player or insert one with the given number of chips.
     pub async fn get_or_insert_player(&self, player_id: PeerId, chips: Chips) -> Result<Player> {
-        let db = self.db.clone();
+        let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
-            let db = db.lock();
+            let conn = conn.lock();
 
-            let mut stmt = db.prepare(
+            let mut stmt = conn.prepare(
                 "SELECT id, chips
                  FROM players
                  WHERE id = ?1",
@@ -94,7 +96,7 @@ impl Db {
                 Err(rusqlite::Error::QueryReturnedNoRows) => {
                     let player = Player { player_id, chips };
 
-                    db.execute(
+                    conn.execute(
                         "INSERT INTO players (id, chips, last_update)
                          VALUES (?1, ?2, CURRENT_TIMESTAMP)",
                         params![player.player_id.digits(), player.chips.amount()],
