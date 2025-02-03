@@ -36,6 +36,8 @@ pub struct Table {
 pub enum TableMessage {
     /// Sends a message to a client.
     Send(SignedMessage),
+    /// The receiver left the table.
+    PlayerLeft,
     /// Close a client connection.
     Close,
 }
@@ -44,11 +46,13 @@ pub enum TableMessage {
 #[derive(Debug)]
 enum TableCommand {
     /// Join this table.
-    Join(
-        PeerId,
-        String,
-        oneshot::Sender<Result<mpsc::Receiver<TableMessage>>>,
-    ),
+    Join {
+        player_id: PeerId,
+        nickname: String,
+        join_chips: Chips,
+        table_tx: mpsc::Sender<TableMessage>,
+        resp_tx: oneshot::Sender<Result<()>>,
+    },
     /// Leave this table.
     Leave(PeerId),
     /// Handle a player message.
@@ -97,18 +101,22 @@ impl Table {
         &self,
         player_id: &PeerId,
         nickname: &str,
-    ) -> Result<mpsc::Receiver<TableMessage>> {
-        let (res_tx, res_rx) = oneshot::channel();
+        join_chips: Chips,
+        table_tx: mpsc::Sender<TableMessage>,
+    ) -> Result<()> {
+        let (resp_tx, resp_rx) = oneshot::channel();
 
         self.commands_tx
-            .send(TableCommand::Join(
-                player_id.clone(),
-                nickname.to_string(),
-                res_tx,
-            ))
+            .send(TableCommand::Join {
+                player_id: player_id.clone(),
+                nickname: nickname.to_string(),
+                join_chips,
+                table_tx,
+                resp_tx,
+            })
             .await?;
 
-        res_rx.await?
+        resp_rx.await?
     }
 
     /// A player leaves the table.
@@ -132,7 +140,7 @@ struct TableTask {
     seats: usize,
     /// Table key.
     sk: Arc<SigningKey>,
-    /// Game db/
+    /// Game db.
     db: Db,
     /// Channel for receiving table commands.
     commands_rx: mpsc::Receiver<TableCommand>,
@@ -156,9 +164,9 @@ impl TableTask {
                 }
                 // We have received a message from the client.
                 res = self.commands_rx.recv() => match res {
-                    Some(TableCommand::Join(peer_id, nickname, res_tx)) => {
-                        let res = state.join(&peer_id, &nickname).await;
-                        let _ = res_tx.send(res);
+                    Some(TableCommand::Join{ player_id, nickname, join_chips, table_tx, resp_tx }) => {
+                        let res = state.join(&player_id, &nickname, join_chips, table_tx).await;
+                        let _ = resp_tx.send(res);
                     }
                     Some(TableCommand::Leave(peer_id)) => {
                         state.leave(&peer_id).await;
@@ -298,6 +306,7 @@ impl Player {
     fn db_player(&self) -> DbPlayer {
         DbPlayer {
             player_id: self.player_id.clone(),
+            nickname: self.nickname.clone(),
             chips: self.chips,
         }
     }
@@ -314,6 +323,12 @@ impl PlayersState {
     /// Adds a player to the table.
     fn join(&mut self, player: Player) {
         self.players.push(player);
+    }
+
+    /// Remove all players.
+    fn clear(&mut self) {
+        self.players.clear();
+        self.active_player = None;
     }
 
     /// Removes a player from the table.
@@ -482,7 +497,6 @@ struct Pot {
 struct State {
     table_id: TableId,
     seats: usize,
-    join_chips: Chips,
     sk: Arc<SigningKey>,
     db: Db,
     hand_state: HandState,
@@ -505,7 +519,6 @@ impl State {
         Self {
             table_id,
             seats,
-            join_chips: 1_000_000.into(),
             sk,
             db,
             hand_state: HandState::WaitForPlayers,
@@ -526,7 +539,9 @@ impl State {
         &mut self,
         player_id: &PeerId,
         nickname: &str,
-    ) -> Result<mpsc::Receiver<TableMessage>> {
+        join_chips: Chips,
+        table_tx: mpsc::Sender<TableMessage>,
+    ) -> Result<()> {
         if !matches!(self.hand_state, HandState::WaitForPlayers) {
             bail!("Hand in progress");
         }
@@ -539,19 +554,11 @@ impl State {
             bail!("Player has already joined");
         }
 
-        // Create new player.
-        let db_player = self
-            .db
-            .get_or_insert_player(player_id.clone(), self.join_chips)
-            .await?;
-
-        let (table_tx, table_rx) = mpsc::channel(128);
-
         // Add new player to the table.
         let join_player = Player::new(
             player_id.clone(),
             nickname.to_string(),
-            db_player.chips,
+            join_chips,
             table_tx,
         );
 
@@ -593,7 +600,7 @@ impl State {
             self.enter_start_game().await;
         }
 
-        Ok(table_rx)
+        Ok(())
     }
 
     /// A player leaves the table.
@@ -849,6 +856,15 @@ impl State {
         self.hand_state = HandState::EndGame;
 
         // TODO: End game logic.
+        // - Update player chips.
+
+        // Tell all player the game has finished and leave the table.
+        for player in self.players.iter() {
+            let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
+        }
+
+        self.players.clear();
+        self.hand_state = HandState::WaitForPlayers;
     }
 
     fn pay_bets(&mut self) -> Vec<(PeerId, Chips)> {

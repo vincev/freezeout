@@ -72,7 +72,7 @@ impl View for ConnectView {
         while let Some(event) = app.poll_network() {
             match event {
                 ConnectionEvent::Open => {
-                    app.send_message(Message::JoinTable(self.nickname.to_string()));
+                    app.send_message(Message::JoinServer(self.nickname.to_string()));
                     self.connection_open = true;
                 }
                 ConnectionEvent::Close => {

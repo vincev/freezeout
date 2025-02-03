@@ -155,7 +155,7 @@ mod tests {
             let mut con = accept_async(stream).await.unwrap();
 
             let msg = con.recv().await.unwrap().unwrap();
-            assert!(matches!(msg.message(), Message::JoinTable(s) if s == "Bob"));
+            assert!(matches!(msg.message(), Message::JoinServer { nickname} if nickname == "Bob"));
 
             let msg = con.recv().await.unwrap().unwrap();
             assert!(matches!(msg.message(), Message::Error(e) if e == "error"));
@@ -165,7 +165,12 @@ mod tests {
 
         let mut con = connect_async(addr).await.unwrap();
         let keypair = SigningKey::default();
-        let msg = SignedMessage::new(&keypair, Message::JoinTable("Bob".to_string()));
+        let msg = SignedMessage::new(
+            &keypair,
+            Message::JoinServer {
+                nickname: "Bob".to_string(),
+            },
+        );
         con.send(&msg).await.unwrap();
 
         let msg = SignedMessage::new(&keypair, Message::Error("error".to_string()));

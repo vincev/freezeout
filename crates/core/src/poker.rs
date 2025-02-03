@@ -40,6 +40,11 @@ impl Chips {
     /// The zero chips.
     pub const ZERO: Chips = Chips(0);
 
+    /// Creates chips with the given value.
+    pub const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
     /// The integer amount.
     pub fn amount(&self) -> u32 {
         self.0

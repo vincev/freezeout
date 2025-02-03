@@ -14,8 +14,20 @@ use crate::{
 /// Message exchanged by a client and a server.
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Message {
-    /// Join a table with a nickname.
-    JoinTable(String),
+    /// Joins a server with a nickname.
+    JoinServer {
+        /// The player nickname.
+        nickname: String,
+    },
+    /// A player account information.
+    ServerJoined {
+        /// The player nickname.
+        nickname: String,
+        /// The chips amount for the player.
+        chips: Chips,
+    },
+    /// Join a table.
+    JoinTable,
     /// Table joined confirmation.
     TableJoined {
         /// The table the player joined.
@@ -23,6 +35,10 @@ pub enum Message {
         /// The chips amount for the player who joined.
         chips: Chips,
     },
+    /// There are no tables left.
+    NoTablesLeft,
+    /// The playe doesn't have enough chips to join a game.
+    NotEnoughChips,
     /// A player joined the table.
     PlayerJoined {
         /// The player id.
@@ -198,12 +214,16 @@ mod tests {
     #[test]
     fn signed_message() {
         let keypair = SigningKey::default();
-        let message = Message::JoinTable("Alice".to_string());
+        let message = Message::JoinServer {
+            nickname: "Alice".to_string(),
+        };
 
         let smsg = SignedMessage::new(&keypair, message);
         let bytes = smsg.serialize();
 
         let deser_msg = SignedMessage::deserialize_and_verify(&bytes).unwrap();
-        assert!(matches!(deser_msg.message(), Message::JoinTable(s) if s == "Alice"));
+        assert!(
+            matches!(deser_msg.message(), Message::JoinServer{ nickname } if nickname == "Alice")
+        );
     }
 }
