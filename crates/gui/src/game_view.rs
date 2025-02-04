@@ -6,11 +6,11 @@ use eframe::egui::*;
 use log::error;
 
 use freezeout_core::{
-    message::PlayerAction,
+    message::{Message, PlayerAction},
     poker::{Chips, PlayerCards},
 };
 
-use crate::{App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
+use crate::{AccountView, App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
 
 /// Connect view.
 pub struct GameView {
@@ -18,6 +18,7 @@ pub struct GameView {
     game_state: GameState,
     error: Option<String>,
     bet_params: Option<BetParams>,
+    show_account: Option<Chips>,
 }
 
 struct BetParams {
@@ -44,6 +45,10 @@ impl View for GameView {
                     self.connection_closed = true;
                 }
                 ConnectionEvent::Message(msg) => {
+                    if let Message::ShowAccount { chips } = msg.message() {
+                        self.show_account = Some(*chips);
+                    }
+
                     self.game_state.handle_message(msg, app);
                 }
             }
@@ -73,6 +78,12 @@ impl View for GameView {
     ) -> Option<Box<dyn View>> {
         if self.connection_closed {
             Some(Box::new(ConnectView::new(frame.storage(), app)))
+        } else if let Some(chips) = self.show_account {
+            Some(Box::new(AccountView::new(
+                app.nickname().to_string(),
+                chips,
+                app,
+            )))
         } else {
             None
         }
@@ -87,14 +98,15 @@ impl GameView {
     const BUTTON_LY: f32 = 35.0;
 
     /// Creates a new [GameView].
-    pub fn new(ctx: &Context) -> Self {
+    pub fn new(ctx: &Context, game_state: GameState) -> Self {
         ctx.request_repaint();
 
         Self {
             connection_closed: false,
-            game_state: GameState::default(),
+            game_state,
             error: None,
             bet_params: None,
+            show_account: None,
         }
     }
 

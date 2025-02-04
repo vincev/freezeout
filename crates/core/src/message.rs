@@ -48,6 +48,11 @@ pub enum Message {
         /// The player chips.
         chips: Chips,
     },
+    /// Show the account dialog.
+    ShowAccount {
+        /// The player chips.
+        chips: Chips,
+    },
     /// Tell players the game is starting and update the seats order.
     StartGame(Vec<PeerId>),
     /// Tell players to prepare for a new hand.

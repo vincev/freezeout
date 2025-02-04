@@ -22,7 +22,7 @@ use freezeout_core::{
     poker::{Card, Chips, Deck, HandValue, PlayerCards, TableId},
 };
 
-use crate::db::{Db, Player as DbPlayer};
+use crate::db::Db;
 
 /// Table state shared by all players who joined the table.
 #[derive(Debug)]
@@ -301,15 +301,6 @@ impl Player {
         self.public_cards = PlayerCards::None;
         self.action_timer = None;
     }
-
-    /// Returns a DbPlayer for db updates.
-    fn db_player(&self) -> DbPlayer {
-        DbPlayer {
-            player_id: self.player_id.clone(),
-            nickname: self.nickname.clone(),
-            chips: self.chips,
-        }
-    }
 }
 
 /// The table players state.
@@ -512,7 +503,7 @@ struct State {
 }
 
 impl State {
-    const ACTION_TIMEOUT: Duration = Duration::from_secs(30);
+    const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
 
     /// Create a new state.
     fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
@@ -616,11 +607,6 @@ impl State {
             let msg = Message::PlayerLeft(player_id.clone());
             self.broadcast(msg).await;
 
-            // Update this player database state.
-            if let Err(e) = self.db.update(vec![player.db_player()]).await {
-                error!("Player {} db update failed {}", player_id.digits(), e);
-            }
-
             if self.players.count_active() < 2 {
                 self.enter_end_hand().await;
                 return;
@@ -670,7 +656,7 @@ impl State {
 
     async fn tick(&mut self) {
         if let Some(dt) = self.new_hand_start_time {
-            if dt.elapsed() > Duration::from_secs(10) {
+            if dt.elapsed() > Duration::from_secs(5) {
                 self.new_hand_start_time = None;
                 self.enter_start_hand().await;
             }
@@ -831,18 +817,13 @@ impl State {
     async fn enter_end_hand(&mut self) {
         self.hand_state = HandState::EndHand;
 
+        self.update_pots();
         let winners = self.pay_bets();
 
         // Update players and broadcast update to all players.
         self.players.end_hand();
         self.broadcast_game_update().await;
         self.broadcast(Message::EndHand { winners }).await;
-
-        // Update players db state.
-        let db_players = self.players.iter().map(|p| p.db_player()).collect();
-        if let Err(e) = self.db.update(db_players).await {
-            error!("Db players update failed {e}");
-        }
 
         // End game or set timer to start new hand.
         if self.players.count_with_chips() < 2 {
@@ -855,12 +836,19 @@ impl State {
     async fn enter_end_game(&mut self) {
         self.hand_state = HandState::EndGame;
 
-        // TODO: End game logic.
-        // - Update player chips.
+        // Wait some time to give time to player to see the end game.
+        time::sleep(Duration::from_secs(5)).await;
 
-        // Tell all player the game has finished and leave the table.
+        // Pay the players and tell them the game has finished and leave the table.
         for player in self.players.iter() {
             let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
+            let res = self
+                .db
+                .pay_to_player(player.player_id.clone(), player.chips)
+                .await;
+            if let Err(e) = res {
+                error!("Db players update failed {e}");
+            }
         }
 
         self.players.clear();

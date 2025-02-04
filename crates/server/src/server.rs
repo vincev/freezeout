@@ -361,9 +361,8 @@ impl Handler {
 
                         let player = self.db.get_player(player_id.clone()).await?;
 
-                        // Notify client with the player account.
-                        let msg = Message::ServerJoined {
-                            nickname: player.nickname,
+                        // Tell the client to show the account dialog.
+                        let msg = Message::ShowAccount {
                             chips: player.chips,
                         };
 

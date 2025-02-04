@@ -89,6 +89,7 @@ impl Db {
 
                     // Update nickname if the player joined with a different one.
                     if player.nickname != nickname {
+                        player.nickname = nickname.to_string();
                         do_update = true;
                     }
 
@@ -96,7 +97,7 @@ impl Db {
                         conn.execute(
                             "UPDATE players SET
                                 chips = ?2,
-                                nickname = ?3
+                                nickname = ?3,
                                 last_update = CURRENT_TIMESTAMP
                              WHERE id = ?1",
                             params![
@@ -143,7 +144,7 @@ impl Db {
 
             let mut stmt = conn.prepare("SELECT chips FROM players WHERE id = ?1")?;
             let res = stmt.query_row(params![player_id.digits()], |row| {
-                Ok(Chips::from(row.get::<usize, i32>(2)? as u32))
+                Ok(Chips::from(row.get::<usize, i32>(0)? as u32))
             });
 
             match res {
@@ -217,31 +218,6 @@ impl Db {
                 })
             })
             .map_err(anyhow::Error::from)
-        })
-        .await?
-    }
-
-    /// Updates players state.
-    pub async fn update(&self, players: Vec<Player>) -> Result<()> {
-        let conn = self.conn.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = conn.lock();
-
-            let tx = conn.transaction()?;
-
-            for player in players {
-                tx.execute(
-                    "UPDATE players SET
-                       chips = ?1,
-                       last_update = CURRENT_TIMESTAMP
-                     WHERE id = ?2",
-                    params![player.chips.amount(), player.player_id.digits()],
-                )?;
-            }
-
-            tx.commit()?;
-
-            Ok(())
         })
         .await?
     }

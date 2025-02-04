@@ -37,26 +37,6 @@ pub struct App {
     connection: Option<Connection>,
 }
 
-/// Traits for UI views.
-pub trait View {
-    /// Process a view update.
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame, app: &mut App);
-
-    /// Returns the next view if any.
-    fn next(
-        &mut self,
-        ctx: &Context,
-        frame: &mut eframe::Frame,
-        app: &mut App,
-    ) -> Option<Box<dyn View>>;
-}
-
-/// The UI main frame.
-pub struct AppFrame {
-    app: App,
-    panel: Box<dyn View>,
-}
-
 impl App {
     fn new(config: Config, textures: Textures) -> Self {
         let sk = SigningKey::default();
@@ -144,6 +124,26 @@ impl App {
             s.flush();
         }
     }
+}
+
+/// Traits for UI views.
+pub trait View {
+    /// Process a view update.
+    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame, app: &mut App);
+
+    /// Returns the next view if any.
+    fn next(
+        &mut self,
+        ctx: &Context,
+        frame: &mut eframe::Frame,
+        app: &mut App,
+    ) -> Option<Box<dyn View>>;
+}
+
+/// The UI main frame.
+pub struct AppFrame {
+    app: App,
+    panel: Box<dyn View>,
 }
 
 impl AppFrame {

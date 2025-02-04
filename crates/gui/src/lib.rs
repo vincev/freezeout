@@ -7,6 +7,9 @@
 pub mod cards;
 pub use cards::Textures;
 
+pub mod account_view;
+pub use account_view::AccountView;
+
 pub mod connect_view;
 pub use connect_view::ConnectView;
 
