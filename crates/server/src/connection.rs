@@ -3,6 +3,7 @@
 
 //! Noise protocol encrypted WebSocket connection types.
 use anyhow::{anyhow, bail, Result};
+use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use snow::{params::NoiseParams, TransportState};
 use std::sync::LazyLock;
@@ -35,9 +36,11 @@ impl EncryptedConnection {
 
     /// Sends a [SignedMessage].
     pub async fn send(&mut self, msg: &SignedMessage) -> Result<()> {
-        let mut buf = [0u8; MAX_MSG_LEN];
+        let mut buf = BytesMut::zeroed(MAX_MSG_LEN);
         let len = self.transport.write_message(&msg.serialize(), &mut buf)?;
-        self.stream.send(WsMessage::binary(&buf[..len])).await?;
+        self.stream
+            .send(WsMessage::binary(buf.freeze().slice(..len)))
+            .await?;
 
         Ok(())
     }
@@ -50,7 +53,7 @@ impl EncryptedConnection {
                 Some(Ok(WsMessage::Binary(payload))) => {
                     break Some(
                         self.transport
-                            .read_message(payload.as_slice(), &mut buf)
+                            .read_message(&payload, &mut buf)
                             .map_err(anyhow::Error::from)
                             .and_then(|len| SignedMessage::deserialize_and_verify(&buf[..len])),
                     );
@@ -77,13 +80,13 @@ pub async fn accept_async(stream: TcpStream) -> Result<EncryptedConnection> {
 
     // Start Noise protocol handshake with the client.
     let mut noise = snow::Builder::new(NOISE_PARAMS.clone()).build_responder()?;
-    let mut buf = [0u8; MAX_MSG_LEN];
+    let mut buf = BytesMut::zeroed(MAX_MSG_LEN);
 
     // <- e
     match stream.next().await {
         Some(Ok(WsMessage::Binary(payload))) => {
             noise
-                .read_message(payload.as_slice(), &mut buf)
+                .read_message(&payload, &mut buf)
                 .map_err(|e| anyhow!("Responder Noise handshake invalid message {e}"))?;
         }
         Some(Ok(_)) => {
@@ -95,7 +98,9 @@ pub async fn accept_async(stream: TcpStream) -> Result<EncryptedConnection> {
 
     // -> e, ee
     let len = noise.write_message(&[], &mut buf)?;
-    stream.send(WsMessage::binary(&buf[..len])).await?;
+    stream
+        .send(WsMessage::binary(buf.freeze().slice(..len)))
+        .await?;
 
     let transport = noise.into_transport_mode()?;
 
@@ -112,17 +117,20 @@ pub async fn connect_async(addr: &str) -> Result<EncryptedConnection> {
 
     // Start Noise protocol handshake.
     let mut noise = snow::Builder::new(NOISE_PARAMS.clone()).build_initiator()?;
-    let mut buf = [0u8; MAX_MSG_LEN];
 
     // -> e
+    let mut buf = BytesMut::zeroed(MAX_MSG_LEN);
     let len = noise.write_message(&[], &mut buf)?;
-    stream.send(WsMessage::binary(&buf[..len])).await?;
+    stream
+        .send(WsMessage::binary(buf.freeze().slice(..len)))
+        .await?;
 
     // <- e, ee
     match stream.next().await {
         Some(Ok(WsMessage::Binary(payload))) => {
+            let mut buf = BytesMut::zeroed(MAX_MSG_LEN);
             noise
-                .read_message(payload.as_slice(), &mut buf)
+                .read_message(&payload, &mut buf)
                 .map_err(|e| anyhow!("Initiator Noise handshake invalid message {e}"))?;
         }
         Some(Ok(_)) => {

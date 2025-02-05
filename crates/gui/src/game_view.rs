@@ -59,7 +59,7 @@ impl View for GameView {
             .resizable(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .title_bar(false)
-            .frame(Frame::none().fill(Color32::from_gray(80)).rounding(7.0))
+            .frame(Frame::NONE.fill(Color32::from_gray(80)).corner_radius(7.0))
             .show(ctx, |ui| {
                 let (rect, _) = ui.allocate_exact_size(vec2(1024.0, 640.0), Sense::hover());
                 let table_rect = Rect::from_center_size(rect.center(), rect.shrink(60.0).size());
@@ -135,6 +135,7 @@ impl GameView {
                 0.0,
                 fill,
                 Stroke::NONE,
+                StrokeKind::Inside,
             );
         }
 
@@ -180,7 +181,7 @@ impl GameView {
 
         for card in self.game_state.board() {
             let tx = app.textures.card(*card);
-            Image::new(&tx).rounding(5.0).paint_at(ui, card_rect);
+            Image::new(&tx).corner_radius(5.0).paint_at(ui, card_rect);
 
             card_rect = card_rect.translate(vec2(CARD_SIZE.x + BORDER, 0.0));
         }
@@ -387,10 +388,10 @@ impl GameView {
 
         let card_pos = cards_rect.left_top() + vec2(4.0, 4.0);
         let c1_rect = Rect::from_min_size(card_pos, card_size);
-        Image::new(&tx1).rounding(2.0).paint_at(ui, c1_rect);
+        Image::new(&tx1).corner_radius(2.0).paint_at(ui, c1_rect);
 
         let c2_rect = Rect::from_min_size(card_pos + vec2(card_size.x + 2.0, 0.0), card_size);
-        Image::new(&tx2).rounding(2.0).paint_at(ui, c2_rect);
+        Image::new(&tx2).corner_radius(2.0).paint_at(ui, c2_rect);
     }
 
     fn paint_player_action(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) {
@@ -415,14 +416,19 @@ impl GameView {
             let mut action_rect = rect.shrink(1.0);
             action_rect.set_height(rect.height() / 2.0);
 
-            let rounding = Rounding {
-                nw: 4.0,
-                ne: 4.0,
-                ..Rounding::default()
+            let rounding = CornerRadius {
+                nw: 4,
+                ne: 4,
+                ..CornerRadius::default()
             };
 
-            ui.painter()
-                .rect(action_rect, rounding, Self::TEXT_COLOR, Stroke::NONE);
+            ui.painter().rect(
+                action_rect,
+                rounding,
+                Self::TEXT_COLOR,
+                Stroke::NONE,
+                StrokeKind::Inside,
+            );
 
             let label = if player.winnings > Chips::ZERO {
                 "WINNER"
@@ -615,12 +621,14 @@ impl GameView {
 
 fn paint_border(ui: &mut Ui, rect: &Rect) {
     let border_color = Color32::from_gray(20);
-    ui.painter().rect(*rect, 5.0, border_color, Stroke::NONE);
+    ui.painter()
+        .rect(*rect, 5.0, border_color, Stroke::NONE, StrokeKind::Inside);
 
     for (idx, &color) in (0..6).zip(&[100, 120, 140, 100, 80]) {
         let border_rect = rect.expand(idx as f32);
         let stroke = Stroke::new(1.0, Color32::from_gray(color as u8));
-        ui.painter().rect_stroke(border_rect, 5.0, stroke);
+        ui.painter()
+            .rect_stroke(border_rect, 5.0, stroke, StrokeKind::Inside);
     }
 }
 
@@ -630,6 +638,7 @@ fn fill_inactive(ui: &mut Ui, rect: &Rect) {
         2.0,
         Color32::from_rgba_unmultiplied(60, 60, 60, 140),
         Stroke::NONE,
+        StrokeKind::Inside,
     );
 }
 

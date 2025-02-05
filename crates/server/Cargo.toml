@@ -9,6 +9,7 @@ version = "0.1.0"
 [dependencies]
 ahash = { workspace = true }
 anyhow = { workspace = true }
+bytes = "1.10.0"
 clap = { workspace = true }
 directories = "6.0.0"
 env_logger = { workspace = true }
@@ -20,4 +21,4 @@ rand = { workspace = true }
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 snow = { workspace = true }
 tokio = { version = "1.42.0", features=["full"] }
-tokio-tungstenite = "0.25.0"
+tokio-tungstenite = "0.26.0"
