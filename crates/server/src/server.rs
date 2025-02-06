@@ -354,7 +354,7 @@ impl Handler {
                             break err;
                         }
                     }
-                    TableMessage::PlayerLeft => {
+                    TableMessage::LeaveTable => {
                         // If a player leaves the table reset the table and send
                         // updated player account information to the client.
                         self.table = None;

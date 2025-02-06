@@ -36,8 +36,8 @@ pub struct Table {
 pub enum TableMessage {
     /// Sends a message to a client.
     Send(SignedMessage),
-    /// The receiver left the table.
-    PlayerLeft,
+    /// Tell the client to leave the table.
+    LeaveTable,
     /// Close a client connection.
     Close,
 }
@@ -381,6 +381,14 @@ impl PlayersState {
         self.players.iter().filter(|p| p.is_active).count()
     }
 
+    /// Returns the number of player in the hand who have chips.
+    fn count_active_with_chips(&self) -> usize {
+        self.players
+            .iter()
+            .filter(|p| p.is_active && p.chips > Chips::ZERO)
+            .count()
+    }
+
     /// Returns the number of player who have chips.
     fn count_with_chips(&self) -> usize {
         self.players
@@ -473,6 +481,11 @@ impl PlayersState {
     fn end_hand(&mut self) {
         self.active_player = None;
         self.players.iter_mut().for_each(Player::end_hand);
+    }
+
+    /// Remove players that run out of chips.
+    fn remove_players_with_no_chips(&mut self) {
+        self.players.retain(|p| p.chips > Chips::ZERO);
     }
 }
 
@@ -829,7 +842,23 @@ impl State {
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
         } else {
+            // Set timer for starting a new hand.
             self.new_hand_start_time = Some(Instant::now());
+
+            // Wait before removing players.
+            time::sleep(Duration::from_secs(5)).await;
+
+            // All players that run out of chips must leave the table.
+            for player in self.players.iter() {
+                if player.chips == Chips::ZERO {
+                    let _ = player.table_tx.send(TableMessage::LeaveTable).await;
+
+                    let msg = Message::PlayerLeft(player.player_id.clone());
+                    self.broadcast(msg).await;
+                }
+            }
+
+            self.players.remove_players_with_no_chips();
         }
     }
 
@@ -841,7 +870,7 @@ impl State {
 
         // Pay the players and tell them the game has finished and leave the table.
         for player in self.players.iter() {
-            let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
+            let _ = player.table_tx.send(TableMessage::LeaveTable).await;
             let res = self
                 .db
                 .pay_to_player(player.player_id.clone(), player.chips)
@@ -915,7 +944,7 @@ impl State {
         }
 
         // Only one player has chips all others are all in.
-        if self.players.count_with_chips() < 2 {
+        if self.players.count_active_with_chips() < 2 {
             return true;
         }
 
