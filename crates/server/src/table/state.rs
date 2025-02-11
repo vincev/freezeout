@@ -130,6 +130,7 @@ impl State {
         let msg = Message::TableJoined {
             table_id: self.table_id,
             chips: join_player.chips,
+            seats: self.seats as u8,
         };
         let smsg = SignedMessage::new(&self.sk, msg);
         let _ = join_player.table_tx.send(TableMessage::Send(smsg)).await;

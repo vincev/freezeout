@@ -34,6 +34,8 @@ pub enum Message {
         table_id: TableId,
         /// The chips amount for the player who joined.
         chips: Chips,
+        /// The number of seats at this table.
+        seats: u8,
     },
     /// There are no tables left.
     NoTablesLeft,

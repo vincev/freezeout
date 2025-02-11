@@ -164,6 +164,26 @@ impl GameView {
         // Cards board
         paint_oval(ui, &rect.shrink(162.0), Color32::from_gray(160));
         paint_oval(ui, &rect.shrink(164.0), inner);
+
+        if !self.game_state.game_started() {
+            let players = self.game_state.players().len();
+            let seats = self.game_state.seats();
+            let missing = seats - players;
+
+            let msg = if missing > 1 {
+                format!("Waiting for {missing} players to join")
+            } else {
+                "Waiting for 1 player to join".to_string()
+            };
+
+            ui.painter().text(
+                rect.center(),
+                Align2::CENTER_CENTER,
+                msg,
+                FontId::new(30.0, FontFamily::Monospace),
+                Color32::from_gray(180),
+            );
+        }
     }
 
     fn paint_board(&self, ui: &mut Ui, rect: &Rect, app: &App) {

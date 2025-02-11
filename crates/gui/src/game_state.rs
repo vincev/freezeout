@@ -72,6 +72,8 @@ pub struct ActionRequest {
 #[derive(Debug)]
 pub struct GameState {
     table_id: TableId,
+    seats: usize,
+    game_started: bool,
     error: Option<String>,
     players: Vec<Player>,
     action_request: Option<ActionRequest>,
@@ -83,6 +85,8 @@ impl Default for GameState {
     fn default() -> Self {
         Self {
             table_id: TableId::NO_TABLE,
+            seats: 0,
+            game_started: false,
             error: None,
             players: Vec::default(),
             action_request: None,
@@ -96,8 +100,13 @@ impl GameState {
     /// Handle an incoming server message.
     pub fn handle_message(&mut self, msg: SignedMessage, app: &mut App) {
         match msg.message() {
-            Message::TableJoined { table_id, chips } => {
+            Message::TableJoined {
+                table_id,
+                chips,
+                seats,
+            } => {
                 self.table_id = *table_id;
+                self.seats = *seats as usize;
                 // Add this player as the first player in the players list.
                 self.players.push(Player::new(
                     app.player_id().clone(),
@@ -142,6 +151,8 @@ impl GameState {
                     .position(|p| &p.player_id == app.player_id())
                     .expect("Local player not found");
                 self.players.rotate_left(pos);
+
+                self.game_started = true;
             }
             Message::StartHand => {
                 // Prepare for a new hand.
@@ -224,6 +235,16 @@ impl GameState {
     /// The board cards.
     pub fn board(&self) -> &[Card] {
         &self.board
+    }
+
+    /// The number of seats at this table.
+    pub fn seats(&self) -> usize {
+        self.seats
+    }
+
+    /// Checks if the game has started.
+    pub fn game_started(&self) -> bool {
+        self.game_started
     }
 
     /// Checks if the local player is active.
