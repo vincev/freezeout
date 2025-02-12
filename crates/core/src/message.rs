@@ -59,10 +59,10 @@ pub enum Message {
     StartGame(Vec<PeerId>),
     /// Tell players to prepare for a new hand.
     StartHand,
-    /// Tell players the hand has completed.
+    /// Tell players the hand has completed and who won.
     EndHand {
-        /// List of players who won chips in the hand.
-        winners: Vec<(PeerId, Chips)>,
+        /// List of payoffs for the hand.
+        payoffs: Vec<HandPayoff>,
     },
     /// Deal cards to a player.
     DealCards(Card, Card),
@@ -157,6 +157,16 @@ impl PlayerAction {
     }
 }
 
+/// Hand payoff description.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HandPayoff {
+    /// The player receiving the payment.
+    pub player_id: PeerId,
+    /// The payment amount.
+    pub chips: Chips,
+    /// The winning cards.
+    pub cards: Vec<Card>,
+}
 /// A signed message.
 #[derive(Debug, Clone)]
 pub struct SignedMessage {

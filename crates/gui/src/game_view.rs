@@ -432,7 +432,7 @@ impl GameView {
 
         paint_border(ui, &rect);
 
-        if !matches!(player.action, PlayerAction::None) || player.winnings > Chips::ZERO {
+        if !matches!(player.action, PlayerAction::None) || player.winning_chips > Chips::ZERO {
             let mut action_rect = rect.shrink(1.0);
             action_rect.set_height(rect.height() / 2.0);
 
@@ -450,7 +450,7 @@ impl GameView {
                 StrokeKind::Inside,
             );
 
-            let label = if player.winnings > Chips::ZERO {
+            let label = if player.winning_chips > Chips::ZERO {
                 "WINNER"
             } else {
                 player.action.label()
@@ -464,13 +464,13 @@ impl GameView {
                 Self::BG_COLOR,
             );
 
-            if player.bet > Chips::ZERO || player.winnings > Chips::ZERO {
+            if player.bet > Chips::ZERO || player.winning_chips > Chips::ZERO {
                 let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
 
                 let amount = if player.bet > Chips::ZERO {
                     player.bet.to_string()
                 } else {
-                    player.winnings.to_string()
+                    player.winning_chips.to_string()
                 };
 
                 let galley = ui.painter().layout_no_wrap(

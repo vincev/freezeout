@@ -13,7 +13,7 @@ use tokio::{sync::mpsc, time};
 
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
-    message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
+    message::{HandPayoff, Message, PlayerAction, PlayerUpdate, SignedMessage},
     poker::{Card, Chips, Deck, HandValue, PlayerCards, TableId},
 };
 
@@ -397,7 +397,7 @@ impl State {
         // Update players and broadcast update to all players.
         self.players.end_hand();
         self.broadcast_game_update().await;
-        self.broadcast(Message::EndHand { winners }).await;
+        self.broadcast(Message::EndHand { payoffs: winners }).await;
 
         // End game or set timer to start new hand.
         if self.players.count_with_chips() < 2 {
@@ -445,7 +445,7 @@ impl State {
         self.hand_state = HandState::WaitForPlayers;
     }
 
-    fn pay_bets(&mut self) -> Vec<(PeerId, Chips)> {
+    fn pay_bets(&mut self) -> Vec<HandPayoff> {
         let mut winners = AHashMap::new();
 
         match self.players.count_active() {
@@ -454,7 +454,15 @@ impl State {
                 if let Some(player) = self.players.active_player() {
                     for pot in self.pots.drain(..) {
                         player.chips += pot.chips;
-                        *winners.entry(player.player_id.clone()).or_default() += pot.chips;
+
+                        winners
+                            .entry(player.player_id.clone())
+                            .or_insert_with(|| HandPayoff {
+                                player_id: player.player_id.clone(),
+                                chips: Chips::ZERO,
+                                cards: Vec::default(),
+                            })
+                            .chips += pot.chips;
                     }
                 }
             }
@@ -478,16 +486,24 @@ impl State {
                         })
                         .max_by(|p1, p2| p1.1.cmp(&p2.1));
 
-                    if let Some((p, _hv)) = winner {
+                    if let Some((p, hv)) = winner {
                         p.chips += pot.chips;
-                        *winners.entry(p.player_id.clone()).or_default() += pot.chips;
+
+                        winners
+                            .entry(p.player_id.clone())
+                            .or_insert_with(|| HandPayoff {
+                                player_id: p.player_id.clone(),
+                                chips: Chips::ZERO,
+                                cards: hv.hand().to_vec(),
+                            })
+                            .chips += pot.chips;
                     }
                 }
             }
             _ => {}
         }
 
-        winners.into_iter().collect()
+        winners.into_values().collect()
     }
 
     /// Checks if all players in the hand have acted.
