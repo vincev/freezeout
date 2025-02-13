@@ -280,6 +280,7 @@ impl GameView {
         self.paint_player_name_and_chips(player, ui, &id_rect);
         self.paint_player_cards(player, ui, &id_rect, align, &app.textures);
         self.paint_player_action(player, ui, &id_rect, align);
+        self.paint_winning_hand(player, ui, &id_rect, align, &app.textures);
     }
 
     fn paint_player_id(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) -> Rect {
@@ -412,6 +413,50 @@ impl GameView {
 
         let c2_rect = Rect::from_min_size(card_pos + vec2(card_size.x + 2.0, 0.0), card_size);
         Image::new(&tx2).corner_radius(2.0).paint_at(ui, c2_rect);
+    }
+
+    fn paint_winning_hand(
+        &self,
+        player: &Player,
+        ui: &mut Ui,
+        rect: &Rect,
+        align: &Align2,
+        textures: &Textures,
+    ) {
+        const IMAGE_LY: f32 = 60.0;
+
+        if !player.winning_cards.is_empty() {
+            let x_pos = if let Align::RIGHT = align.x() {
+                rect.left_top().x - rect.size().x - 10.0
+            } else {
+                rect.left_top().x
+            };
+
+            let y_pos = if let Align::TOP = align.y() {
+                rect.left_top().y + 130.0
+            } else {
+                rect.left_top().y - (IMAGE_LY + 10.0)
+            };
+
+            let cards_rect = Rect::from_min_size(
+                pos2(x_pos, y_pos),
+                vec2(Self::BUTTON_LX * 2.0 + 10.0, IMAGE_LY),
+            );
+
+            paint_border(ui, &cards_rect);
+
+            let card_lx = (cards_rect.size().x - 11.0) / 5.0;
+            let card_size = vec2(card_lx, cards_rect.size().y - 8.0);
+            let mut card_rect =
+                Rect::from_min_size(cards_rect.left_top() + vec2(4.0, 4.0), card_size);
+
+            for card in &player.winning_cards {
+                let tx = textures.card(*card);
+                Image::new(&tx).corner_radius(2.0).paint_at(ui, card_rect);
+
+                card_rect = card_rect.translate(vec2(card_lx + 1.0, 0.0));
+            }
+        }
     }
 
     fn paint_player_action(&self, player: &Player, ui: &mut Ui, rect: &Rect, align: &Align2) {

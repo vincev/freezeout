@@ -77,6 +77,7 @@ pub struct State {
 
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+    const NEW_HAND_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Create a new state.
     pub fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
@@ -230,7 +231,7 @@ impl State {
 
     pub async fn tick(&mut self) {
         if let Some(dt) = self.new_hand_start_time {
-            if dt.elapsed() > Duration::from_secs(5) {
+            if dt.elapsed() >= Self::NEW_HAND_TIMEOUT {
                 self.new_hand_start_time = None;
                 self.enter_start_hand().await;
             }
@@ -320,7 +321,14 @@ impl State {
         for player in self.players.iter_mut() {
             if player.is_active {
                 player.public_cards = PlayerCards::Covered;
-                player.hole_cards = PlayerCards::Cards(self.deck.deal(), self.deck.deal());
+
+                // Sort cards for the UI.
+                let (c1, c2) = (self.deck.deal(), self.deck.deal());
+                player.hole_cards = if c1.rank() < c2.rank() {
+                    PlayerCards::Cards(c1, c2)
+                } else {
+                    PlayerCards::Cards(c2, c1)
+                };
             } else {
                 player.public_cards = PlayerCards::None;
                 player.hole_cards = PlayerCards::None;
@@ -407,7 +415,7 @@ impl State {
             self.new_hand_start_time = Some(Instant::now());
 
             // Wait before removing players.
-            time::sleep(Duration::from_secs(5)).await;
+            time::sleep(Self::NEW_HAND_TIMEOUT).await;
 
             // All players that run out of chips must leave the table.
             for player in self.players.iter() {
@@ -489,12 +497,16 @@ impl State {
                     if let Some((p, hv)) = winner {
                         p.chips += pot.chips;
 
+                        // Sort by rank for the UI.
+                        let mut cards = hv.hand().to_vec();
+                        cards.sort_by_key(|c| c.rank());
+
                         winners
                             .entry(p.player_id.clone())
                             .or_insert_with(|| HandPayoff {
                                 player_id: p.player_id.clone(),
                                 chips: Chips::ZERO,
-                                cards: hv.hand().to_vec(),
+                                cards,
                             })
                             .chips += pot.chips;
                     }
