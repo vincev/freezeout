@@ -199,11 +199,11 @@ impl Deck {
     pub const SIZE: usize = 52;
 
     /// Creates a new shuffled deck.
-    pub fn new_and_shuffled() -> Self {
+    pub fn new_and_shuffled<R: Rng>(rng: &mut R) -> Self {
         let mut cards = Suit::suits()
             .flat_map(|s| Rank::ranks().map(move |r| Card::new(r, s)))
             .collect::<Vec<_>>();
-        cards.shuffle(&mut thread_rng());
+        cards.shuffle(rng);
         Self { cards }
     }
 
@@ -215,12 +215,6 @@ impl Deck {
     /// Checks if the deck is empty.
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
-    }
-}
-
-impl Default for Deck {
-    fn default() -> Self {
-        Self::new_and_shuffled()
     }
 }
 
@@ -241,7 +235,7 @@ mod tests {
     #[test]
     fn card_encoding() {
         let mut cards = HashSet::default();
-        let mut deck = Deck::new_and_shuffled();
+        let mut deck = Deck::new_and_shuffled(&mut thread_rng());
 
         while !deck.is_empty() {
             let card = deck.deal();

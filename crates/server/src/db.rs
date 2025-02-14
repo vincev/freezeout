@@ -27,10 +27,29 @@ pub struct Db {
 }
 
 impl Db {
-    /// Open a database.
+    /// Open a database at the given path.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let conn = Connection::open(path)?;
 
+        Self::init_database(&conn)?;
+
+        Ok(Db {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
+    /// Open an in memory database.
+    pub fn open_in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+
+        Self::init_database(&conn)?;
+
+        Ok(Db {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
+    fn init_database(conn: &Connection) -> Result<()> {
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
 
         // Create tables
@@ -45,9 +64,7 @@ impl Db {
             (),
         )?;
 
-        Ok(Db {
-            conn: Arc::new(Mutex::new(conn)),
-        })
+        Ok(())
     }
 
     /// A player join the server.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Table player types.
-use rand::seq::SliceRandom;
+use rand::prelude::*;
 use std::{cmp::Ordering, time::Instant};
 use tokio::sync::mpsc;
 
@@ -175,9 +175,8 @@ impl PlayersState {
     }
 
     /// Shuffles the players seats.
-    pub fn shuffle_seats(&mut self) {
-        let mut rng = rand::thread_rng();
-        self.players.shuffle(&mut rng);
+    pub fn shuffle_seats<R: Rng>(&mut self, rng: &mut R) {
+        self.players.shuffle(rng);
     }
 
     /// Returns total number of players.

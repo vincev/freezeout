@@ -5,6 +5,7 @@
 use ahash::{AHashMap, AHashSet};
 use anyhow::{bail, Result};
 use log::{error, info};
+use rand::{rngs::StdRng, SeedableRng};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -73,6 +74,7 @@ pub struct State {
     pots: Vec<Pot>,
     board: Vec<Card>,
     new_hand_start_time: Option<Instant>,
+    rng: StdRng,
 }
 
 impl State {
@@ -81,6 +83,17 @@ impl State {
 
     /// Create a new state.
     pub fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
+        Self::with_rng(table_id, seats, sk, db, StdRng::from_entropy())
+    }
+
+    /// Create a new state with user initialized randomness.
+    fn with_rng(
+        table_id: TableId,
+        seats: usize,
+        sk: Arc<SigningKey>,
+        db: Db,
+        mut rng: StdRng,
+    ) -> Self {
         Self {
             table_id,
             seats,
@@ -90,12 +103,13 @@ impl State {
             small_blind: 10_000.into(),
             big_blind: 20_000.into(),
             players: PlayersState::default(),
-            deck: Deck::new_and_shuffled(),
+            deck: Deck::new_and_shuffled(&mut rng),
             last_bet: Chips::ZERO,
             min_raise: Chips::ZERO,
             pots: vec![Pot::default()],
             board: Vec::default(),
             new_hand_start_time: None,
+            rng,
         }
     }
 
@@ -270,7 +284,7 @@ impl State {
         self.hand_state = HandState::StartGame;
 
         // Shuffle seats before starting the game.
-        self.players.shuffle_seats();
+        self.players.shuffle_seats(&mut self.rng);
 
         // Tell players to update their seats order.
         let seats = self.players.iter().map(|p| p.player_id.clone()).collect();
@@ -306,7 +320,7 @@ impl State {
         self.min_raise = self.big_blind;
 
         // Create a new deck.
-        self.deck = Deck::new_and_shuffled();
+        self.deck = Deck::new_and_shuffled(&mut self.rng);
 
         // Clear board.
         self.board.clear();
@@ -713,5 +727,97 @@ impl State {
         for player in self.players.iter() {
             player.send(smsg.clone()).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const JOIN_CHIPS: Chips = Chips::new(100_000);
+    // Creates a `State` with seeded randomness and memory database.
+    fn new_state(seats: usize) -> State {
+        let rng = StdRng::seed_from_u64(13);
+        let db = Db::open_in_memory().unwrap();
+        let sk = Arc::new(SigningKey::default());
+        State::with_rng(TableId::new_id(), seats, sk, db, rng)
+    }
+
+    fn new_player(chips: Chips) -> (Player, mpsc::Receiver<TableMessage>) {
+        let peer_id = SigningKey::default().verifying_key().peer_id();
+        let (table_tx, table_rx) = mpsc::channel(64);
+        let player = Player::new(peer_id.clone(), peer_id.digits(), chips, table_tx);
+        (player, table_rx)
+    }
+
+    macro_rules! matches_message {
+        ($msg:expr, $pattern:pat $(if $guard:expr)?) => {
+            match $msg {
+                TableMessage::Send(msg) => match msg.message() {
+                    $pattern $(if $guard)? => true,
+                    _ => false,
+                }
+                _ => false
+            }
+        };
+    }
+
+    #[tokio::test]
+    async fn start_game() {
+        let mut state = new_state(3);
+
+        let (p1, mut rx1) = new_player(Chips::new(1_000_000));
+        let (p2, mut rx2) = new_player(Chips::new(1_000_000));
+        let (p3, mut rx3) = new_player(Chips::new(1_000_000));
+
+        state
+            .join(&p1.player_id, &p1.nickname, JOIN_CHIPS, p1.table_tx.clone())
+            .await
+            .unwrap();
+
+        let msg = rx1.recv().await.unwrap();
+        assert!(matches_message!(msg, Message::TableJoined { .. }));
+        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
+
+        state
+            .join(&p2.player_id, &p2.nickname, JOIN_CHIPS, p2.table_tx.clone())
+            .await
+            .unwrap();
+
+        // New playe gets a TableJoined and a PlayerJoined for each player at the table.
+        let msg = rx2.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::TableJoined { .. }));
+
+        let msg = rx2.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+
+        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
+
+        // Player one gets a player joined too.
+        let msg = rx1.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+
+        state
+            .join(&p3.player_id, &p3.nickname, JOIN_CHIPS, p3.table_tx.clone())
+            .await
+            .unwrap();
+
+        // Player 3 should get a TableJoined and a PlayerJoined for each player at
+        // the table.
+        let msg = rx3.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::TableJoined { .. }));
+
+        for _ in 0..2 {
+            let msg = rx3.try_recv().unwrap();
+            assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+        }
+
+        // Other players get a PlayerJoined too.
+        let msg = rx1.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+
+        let msg = rx2.try_recv().unwrap();
+        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+
+        assert!(matches!(state.hand_state, HandState::PreflopBetting));
     }
 }
