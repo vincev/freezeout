@@ -736,7 +736,7 @@ mod tests {
     const JOIN_CHIPS: Chips = Chips::new(100_000);
     // Creates a `State` with seeded randomness and memory database.
     fn new_state(seats: usize) -> State {
-        let rng = StdRng::seed_from_u64(13);
+        let rng = StdRng::seed_from_u64(121);
         let db = Db::open_in_memory().unwrap();
         let sk = Arc::new(SigningKey::default());
         State::with_rng(TableId::new_id(), seats, sk, db, rng)
@@ -749,14 +749,16 @@ mod tests {
         (player, table_rx)
     }
 
-    macro_rules! matches_message {
-        ($msg:expr, $pattern:pat $(if $guard:expr)?) => {
-            match $msg {
+    macro_rules! assert_message {
+        ($chan:expr, $pattern:pat $(if $guard:expr)?) => {
+            let res = $chan.try_recv();
+            assert!(res.is_ok(), "No message found");
+            match res.unwrap() {
                 TableMessage::Send(msg) => match msg.message() {
                     $pattern $(if $guard)? => true,
-                    _ => false,
+                    msg => panic!("Unexpected message {msg:?}"),
                 }
-                _ => false
+                msg => panic!("Unexpected table message {msg:?}"),
             }
         };
     }
@@ -769,55 +771,84 @@ mod tests {
         let (p2, mut rx2) = new_player(Chips::new(1_000_000));
         let (p3, mut rx3) = new_player(Chips::new(1_000_000));
 
+        // First player joins, the channel receives a TableJoined.
         state
             .join(&p1.player_id, &p1.nickname, JOIN_CHIPS, p1.table_tx.clone())
             .await
             .unwrap();
 
-        let msg = rx1.recv().await.unwrap();
-        assert!(matches_message!(msg, Message::TableJoined { .. }));
+        assert_message!(rx1, Message::TableJoined { .. });
         assert!(matches!(state.hand_state, HandState::WaitForPlayers));
 
+        // Second player joins, should receive a TableJoined and a PlayerJoined for
+        // each player at the table.
         state
             .join(&p2.player_id, &p2.nickname, JOIN_CHIPS, p2.table_tx.clone())
             .await
             .unwrap();
 
-        // New playe gets a TableJoined and a PlayerJoined for each player at the table.
-        let msg = rx2.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::TableJoined { .. }));
-
-        let msg = rx2.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
-
-        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
+        assert_message!(rx2, Message::TableJoined { .. });
+        assert_message!(rx2, Message::PlayerJoined { player_id, .. } if player_id == &p1.player_id);
 
         // Player one gets a player joined too.
-        let msg = rx1.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+        assert_message!(rx1, Message::PlayerJoined { player_id, .. } if player_id == &p2.player_id);
 
+        // Still waiting for players.
+        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
+
+        // Third player joins, should receive a TableJoined and a PlayerJoined for
+        // each player at the table.
         state
             .join(&p3.player_id, &p3.nickname, JOIN_CHIPS, p3.table_tx.clone())
             .await
             .unwrap();
 
-        // Player 3 should get a TableJoined and a PlayerJoined for each player at
-        // the table.
-        let msg = rx3.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::TableJoined { .. }));
-
-        for _ in 0..2 {
-            let msg = rx3.try_recv().unwrap();
-            assert!(matches_message!(msg, Message::PlayerJoined { .. }));
-        }
+        assert_message!(rx3, Message::TableJoined { .. });
+        assert_message!(rx3, Message::PlayerJoined { player_id, .. } if player_id == &p1.player_id);
+        assert_message!(rx3, Message::PlayerJoined { player_id, .. } if player_id == &p2.player_id);
 
         // Other players get a PlayerJoined too.
-        let msg = rx1.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+        assert_message!(rx1, Message::PlayerJoined { player_id, .. } if player_id == &p3.player_id);
+        assert_message!(rx2, Message::PlayerJoined { player_id, .. } if player_id == &p3.player_id);
 
-        let msg = rx2.try_recv().unwrap();
-        assert!(matches_message!(msg, Message::PlayerJoined { .. }));
+        // Check seats shuffle after StartGame.
+        let mut players_it = state.players.iter();
+        assert_eq!(players_it.next().unwrap().player_id, p2.player_id);
+        assert_eq!(players_it.next().unwrap().player_id, p1.player_id);
+        assert_eq!(players_it.next().unwrap().player_id, p3.player_id);
 
-        assert!(matches!(state.hand_state, HandState::PreflopBetting));
+        // All players should all get StartGame with the rotated by one as the button
+        // becomes the small blind.
+        assert_message!(rx1, Message::StartGame(s) if s[0] == p3.player_id);
+        assert_message!(rx2, Message::StartGame(s) if s[1] == p2.player_id);
+        assert_message!(rx3, Message::StartGame(s) if s[2] == p1.player_id);
+
+        // All players joined they should all get StartHand.
+        assert_message!(rx1, Message::StartHand);
+        assert_message!(rx2, Message::StartHand);
+        assert_message!(rx3, Message::StartHand);
+
+        // Check blinds payments.
+        let mut players_it = state.players.iter();
+
+        let sb = players_it.next().unwrap();
+        assert_eq!(sb.bet, state.small_blind);
+        assert_eq!(sb.chips, JOIN_CHIPS - state.small_blind);
+        assert!(matches!(sb.action, PlayerAction::SmallBlind));
+
+        let bb = players_it.next().unwrap();
+        assert_eq!(bb.bet, state.big_blind);
+        assert_eq!(bb.chips, JOIN_CHIPS - state.big_blind);
+        assert!(matches!(bb.action, PlayerAction::BigBlind));
+
+        // All players get an update with the new state.
+        assert_message!(rx1, Message::GameUpdate { .. });
+        assert_message!(rx2, Message::GameUpdate { .. });
+        assert_message!(rx3, Message::GameUpdate { .. });
+
+        // Each player is dealt the cards.
+        assert_message!(rx1, Message::DealCards(_, _));
+        assert_message!(rx2, Message::DealCards(_, _));
+        assert_message!(rx3, Message::DealCards(_, _));
     }
 }
