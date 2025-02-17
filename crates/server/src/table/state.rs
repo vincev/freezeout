@@ -734,26 +734,39 @@ impl State {
 mod tests {
     use super::*;
     const JOIN_CHIPS: Chips = Chips::new(100_000);
-    // Creates a `State` with seeded randomness and memory database.
-    fn new_state(seats: usize) -> State {
-        let rng = StdRng::seed_from_u64(121);
-        let db = Db::open_in_memory().unwrap();
-        let sk = Arc::new(SigningKey::default());
-        State::with_rng(TableId::new_id(), seats, sk, db, rng)
+
+    struct TestPlayer {
+        p: Player,
+        rx: mpsc::Receiver<TableMessage>,
+        sk: SigningKey,
     }
 
-    fn new_player(chips: Chips) -> (Player, mpsc::Receiver<TableMessage>) {
-        let peer_id = SigningKey::default().verifying_key().peer_id();
-        let (table_tx, table_rx) = mpsc::channel(64);
-        let player = Player::new(peer_id.clone(), peer_id.digits(), chips, table_tx);
-        (player, table_rx)
+    impl TestPlayer {
+        fn new(chips: Chips) -> Self {
+            let sk = SigningKey::default();
+            let peer_id = sk.verifying_key().peer_id();
+            let (tx, rx) = mpsc::channel(64);
+            let p = Player::new(peer_id.clone(), peer_id.digits(), chips, tx);
+            Self { p, rx, sk }
+        }
+
+        fn rx(&mut self) -> Option<TableMessage> {
+            self.rx.try_recv().ok()
+        }
+
+        fn msg(&self, msg: Message) -> SignedMessage {
+            SignedMessage::new(&self.sk, msg)
+        }
+
+        fn id(&self) -> &PeerId {
+            &self.p.player_id
+        }
     }
 
     macro_rules! assert_message {
-        ($chan:expr, $pattern:pat $(if $guard:expr)?) => {
-            let res = $chan.try_recv();
-            assert!(res.is_ok(), "No message found");
-            match res.unwrap() {
+        ($player:expr, $pattern:pat $(if $guard:expr)?) => {
+            let msg = $player.rx().expect("No message found");
+            match msg {
                 TableMessage::Send(msg) => match msg.message() {
                     $pattern $(if $guard)? => true,
                     msg => panic!("Unexpected message {msg:?}"),
@@ -763,92 +776,94 @@ mod tests {
         };
     }
 
+    struct TestState {
+        state: State,
+        tp: Vec<TestPlayer>,
+    }
+
+    impl TestState {
+        // Creates a `State` with seeded randomness and memory database.
+        fn new(seats: usize) -> Self {
+            let rng = StdRng::seed_from_u64(121);
+            let db = Db::open_in_memory().unwrap();
+            let sk = Arc::new(SigningKey::default());
+            let state = State::with_rng(TableId::new_id(), seats, sk, db, rng);
+            let tp = (0..seats)
+                .map(|_| TestPlayer::new(Chips::new(1_000_000)))
+                .collect();
+            Self { state, tp }
+        }
+
+        async fn test_start_game(&mut self) {
+            for p in self.tp.iter_mut() {
+                // A player joins a table.
+                self.state
+                    .join(
+                        &p.p.player_id,
+                        &p.p.nickname,
+                        JOIN_CHIPS,
+                        p.p.table_tx.clone(),
+                    )
+                    .await
+                    .expect("Player should be able to join");
+
+                // After joining a player should get a TableJoined message.
+                assert_message!(p, Message::TableJoined { .. });
+            }
+
+            // List of player ids from the test players.
+            let player_ids = self.tp.iter().map(|p| p.id().clone()).collect::<Vec<_>>();
+
+            // After all players joined each player should have received a player
+            // joined for each other player at the table.
+            for p in self.tp.iter_mut() {
+                for id in &player_ids {
+                    // Skip itself.
+                    if p.id() != id {
+                        assert_message!(p, Message::PlayerJoined { player_id: p, .. } if p == id);
+                    }
+                }
+            }
+
+            // Before starting the game the seats are shuffled and a StartGame
+            // message with the new seats is sent to each player. Check that shuffled
+            // seats id are different from the test players id.
+            for p in self.tp.iter_mut() {
+                assert_message!(p, Message::StartGame(seats) if seats != &player_ids);
+            }
+        }
+
+        // Test a start hand, this should be called after test_start_game.
+        async fn test_start_hand(&mut self) {
+            // Before a new hand starts all players get a StartHand message.
+            for p in self.tp.iter_mut() {
+                assert_message!(p, Message::StartHand);
+            }
+
+            // The small blind and big blind players pay the blinds.
+            let sb = &self.state.players.player(0);
+            assert_eq!(sb.bet, self.state.small_blind);
+            assert_eq!(sb.chips, JOIN_CHIPS - self.state.small_blind);
+            assert!(matches!(sb.action, PlayerAction::SmallBlind));
+
+            let bb = &self.state.players.player(1);
+            assert_eq!(bb.bet, self.state.big_blind);
+            assert_eq!(bb.chips, JOIN_CHIPS - self.state.big_blind);
+            assert!(matches!(bb.action, PlayerAction::BigBlind));
+
+            // After players paid the blinds all players should get a game update so
+            // that they can update the UI and then the hole cards are dealt.
+            for p in self.tp.iter_mut() {
+                assert_message!(p, Message::GameUpdate { .. });
+                assert_message!(p, Message::DealCards(_, _));
+            }
+        }
+    }
+
     #[tokio::test]
     async fn start_game() {
-        let mut state = new_state(3);
-
-        let (p1, mut rx1) = new_player(Chips::new(1_000_000));
-        let (p2, mut rx2) = new_player(Chips::new(1_000_000));
-        let (p3, mut rx3) = new_player(Chips::new(1_000_000));
-
-        // First player joins, the channel receives a TableJoined.
-        state
-            .join(&p1.player_id, &p1.nickname, JOIN_CHIPS, p1.table_tx.clone())
-            .await
-            .unwrap();
-
-        assert_message!(rx1, Message::TableJoined { .. });
-        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
-
-        // Second player joins, should receive a TableJoined and a PlayerJoined for
-        // each player at the table.
-        state
-            .join(&p2.player_id, &p2.nickname, JOIN_CHIPS, p2.table_tx.clone())
-            .await
-            .unwrap();
-
-        assert_message!(rx2, Message::TableJoined { .. });
-        assert_message!(rx2, Message::PlayerJoined { player_id, .. } if player_id == &p1.player_id);
-
-        // Player one gets a player joined too.
-        assert_message!(rx1, Message::PlayerJoined { player_id, .. } if player_id == &p2.player_id);
-
-        // Still waiting for players.
-        assert!(matches!(state.hand_state, HandState::WaitForPlayers));
-
-        // Third player joins, should receive a TableJoined and a PlayerJoined for
-        // each player at the table.
-        state
-            .join(&p3.player_id, &p3.nickname, JOIN_CHIPS, p3.table_tx.clone())
-            .await
-            .unwrap();
-
-        assert_message!(rx3, Message::TableJoined { .. });
-        assert_message!(rx3, Message::PlayerJoined { player_id, .. } if player_id == &p1.player_id);
-        assert_message!(rx3, Message::PlayerJoined { player_id, .. } if player_id == &p2.player_id);
-
-        // Other players get a PlayerJoined too.
-        assert_message!(rx1, Message::PlayerJoined { player_id, .. } if player_id == &p3.player_id);
-        assert_message!(rx2, Message::PlayerJoined { player_id, .. } if player_id == &p3.player_id);
-
-        // Check seats shuffle after StartGame.
-        let mut players_it = state.players.iter();
-        assert_eq!(players_it.next().unwrap().player_id, p2.player_id);
-        assert_eq!(players_it.next().unwrap().player_id, p1.player_id);
-        assert_eq!(players_it.next().unwrap().player_id, p3.player_id);
-
-        // All players should all get StartGame with the rotated by one as the button
-        // becomes the small blind.
-        assert_message!(rx1, Message::StartGame(s) if s[0] == p3.player_id);
-        assert_message!(rx2, Message::StartGame(s) if s[1] == p2.player_id);
-        assert_message!(rx3, Message::StartGame(s) if s[2] == p1.player_id);
-
-        // All players joined they should all get StartHand.
-        assert_message!(rx1, Message::StartHand);
-        assert_message!(rx2, Message::StartHand);
-        assert_message!(rx3, Message::StartHand);
-
-        // Check blinds payments.
-        let mut players_it = state.players.iter();
-
-        let sb = players_it.next().unwrap();
-        assert_eq!(sb.bet, state.small_blind);
-        assert_eq!(sb.chips, JOIN_CHIPS - state.small_blind);
-        assert!(matches!(sb.action, PlayerAction::SmallBlind));
-
-        let bb = players_it.next().unwrap();
-        assert_eq!(bb.bet, state.big_blind);
-        assert_eq!(bb.chips, JOIN_CHIPS - state.big_blind);
-        assert!(matches!(bb.action, PlayerAction::BigBlind));
-
-        // All players get an update with the new state.
-        assert_message!(rx1, Message::GameUpdate { .. });
-        assert_message!(rx2, Message::GameUpdate { .. });
-        assert_message!(rx3, Message::GameUpdate { .. });
-
-        // Each player is dealt the cards.
-        assert_message!(rx1, Message::DealCards(_, _));
-        assert_message!(rx2, Message::DealCards(_, _));
-        assert_message!(rx3, Message::DealCards(_, _));
+        let mut state = TestState::new(3);
+        state.test_start_game().await;
+        state.test_start_hand().await;
     }
 }

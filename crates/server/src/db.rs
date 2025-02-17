@@ -68,6 +68,10 @@ impl Db {
     }
 
     /// A player join the server.
+    ///
+    /// If the player doesn't exist it creates one with the given chips, for now if
+    /// the player exists but has fewer chips than join chips the chips are updated
+    /// so that the player has enough chips to join.
     pub async fn join_server(
         &self,
         player_id: PeerId,

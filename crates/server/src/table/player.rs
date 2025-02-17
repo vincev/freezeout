@@ -220,6 +220,13 @@ impl PlayersState {
             .unwrap_or(false)
     }
 
+    /// Returns a reference to a player at the given index.
+    /// Used for testing.
+    #[cfg(test)]
+    pub fn player(&self, idx: usize) -> &Player {
+        self.players.get(idx).expect("No player at the given index")
+    }
+
     /// Returns an iterator to all players.
     pub fn iter(&self) -> impl Iterator<Item = &Player> {
         self.players.iter()
@@ -380,7 +387,7 @@ mod tests {
         assert_eq!(players.active_player.unwrap(), 1);
 
         // Player before active leaves, the active player moved to position 0.
-        let player_id = players.iter().next().unwrap().player_id.clone();
+        let player_id = players.player(0).player_id.clone();
         assert!(players.leave(&player_id).is_some());
         assert_eq!(players.active_player.unwrap(), 0);
         assert_eq!(players.count_active(), SEATS - 1);
@@ -400,7 +407,7 @@ mod tests {
         assert_eq!(players.active_player.unwrap(), 1);
 
         // Player after active leaves, the active player should be the same.
-        let player_id = players.iter().nth(2).unwrap().player_id.clone();
+        let player_id = players.player(2).player_id.clone();
         assert!(players.leave(&player_id).is_some());
         assert_eq!(players.active_player.unwrap(), 1);
         assert_eq!(players.count_active(), SEATS - 1);
@@ -420,8 +427,8 @@ mod tests {
         assert_eq!(players.active_player.unwrap(), 1);
 
         // Active leaves the next player should become active.
-        let active_id = players.iter().nth(1).unwrap().player_id.clone();
-        let next_id = players.iter().nth(2).unwrap().player_id.clone();
+        let active_id = players.player(1).player_id.clone();
+        let next_id = players.player(2).player_id.clone();
         assert!(players.leave(&active_id).is_some());
         assert_eq!(players.active_player.unwrap(), 1);
         assert_eq!(players.active_player().unwrap().player_id, next_id);
@@ -447,8 +454,8 @@ mod tests {
 
         // Active leaves but the player after that has folded so the next player at
         // index 3, that will move to index 2, should become active.
-        let active_id = players.iter().nth(1).unwrap().player_id.clone();
-        let next_id = players.iter().nth(3).unwrap().player_id.clone();
+        let active_id = players.player(1).player_id.clone();
+        let next_id = players.player(3).player_id.clone();
         assert!(players.leave(&active_id).is_some());
         assert_eq!(players.active_player.unwrap(), 2);
         assert_eq!(players.active_player().unwrap().player_id, next_id);
