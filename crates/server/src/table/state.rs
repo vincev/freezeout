@@ -406,7 +406,6 @@ impl State {
             }
         }
 
-        self.broadcast_game_update().await;
         self.enter_end_hand().await;
     }
 
@@ -774,11 +773,21 @@ mod tests {
                 msg => panic!("Unexpected table message {msg:?}"),
             }
         };
-    }
+        ($player:expr, $pattern:pat, $closure:expr) => {
+            let msg = $player.rx().expect("No message found");
+            match msg {
+                TableMessage::Send(msg) => match msg.message() {
+                    $pattern => $closure(),
+                    msg => panic!("Unexpected message {msg:?}"),
+                }
+                msg => panic!("Unexpected table message {msg:?}"),
+            }
+        };
+}
 
     struct TestState {
         state: State,
-        tp: Vec<TestPlayer>,
+        players: Vec<TestPlayer>,
     }
 
     impl TestState {
@@ -791,11 +800,11 @@ mod tests {
             let tp = (0..seats)
                 .map(|_| TestPlayer::new(Chips::new(1_000_000)))
                 .collect();
-            Self { state, tp }
+            Self { state, players: tp }
         }
 
         async fn test_start_game(&mut self) {
-            for p in self.tp.iter_mut() {
+            for p in self.players.iter_mut() {
                 // A player joins a table.
                 self.state
                     .join(
@@ -812,11 +821,15 @@ mod tests {
             }
 
             // List of player ids from the test players.
-            let player_ids = self.tp.iter().map(|p| p.id().clone()).collect::<Vec<_>>();
+            let player_ids = self
+                .players
+                .iter()
+                .map(|p| p.id().clone())
+                .collect::<Vec<_>>();
 
             // After all players joined each player should have received a player
             // joined for each other player at the table.
-            for p in self.tp.iter_mut() {
+            for p in self.players.iter_mut() {
                 for id in &player_ids {
                     // Skip itself.
                     if p.id() != id {
@@ -828,7 +841,7 @@ mod tests {
             // Before starting the game the seats are shuffled and a StartGame
             // message with the new seats is sent to each player. Check that shuffled
             // seats id are different from the test players id.
-            for p in self.tp.iter_mut() {
+            for p in self.players.iter_mut() {
                 assert_message!(p, Message::StartGame(seats) if seats != &player_ids);
             }
         }
@@ -836,7 +849,7 @@ mod tests {
         // Test a start hand, this should be called after test_start_game.
         async fn test_start_hand(&mut self) {
             // Before a new hand starts all players get a StartHand message.
-            for p in self.tp.iter_mut() {
+            for p in self.players.iter_mut() {
                 assert_message!(p, Message::StartHand);
             }
 
@@ -851,19 +864,125 @@ mod tests {
             assert_eq!(bb.chips, JOIN_CHIPS - self.state.big_blind);
             assert!(matches!(bb.action, PlayerAction::BigBlind));
 
+            // The next playe to act is after the big blind.
+            let action_player = 2 % self.state.players.count();
+            let action_id = self.state.players.player(action_player).player_id.clone();
+
             // After players paid the blinds all players should get a game update so
             // that they can update the UI and then the hole cards are dealt.
-            for p in self.tp.iter_mut() {
-                assert_message!(p, Message::GameUpdate { .. });
+            for p in self.players.iter_mut() {
+                assert_message!(p, Message::GameUpdate { players, .. }, || {
+                    assert_eq!(players[0].bet, self.state.small_blind);
+                    assert_eq!(players[1].bet, self.state.big_blind);
+                });
+
                 assert_message!(p, Message::DealCards(_, _));
+
+                // After the blinds each player get an ActionRequest with the player id
+                // and blinds of the player that must act.
+                assert_message!(p, Message::ActionRequest { player_id, .. }, || {
+                    assert_eq!(player_id, &action_id);
+                });
+            }
+        }
+
+        // Send an action from the current active player.
+        async fn send_action(&mut self, msg: Message) {
+            let active_id = self
+                .state
+                .players
+                .active_player()
+                .expect("No active player")
+                .player_id
+                .clone();
+
+            // Find the sender player.
+            for p in self.players.iter_mut() {
+                if p.id() == &active_id {
+                    let msg = p.msg(msg);
+                    self.state.message(msg).await;
+                    break;
+                }
             }
         }
     }
 
     #[tokio::test]
-    async fn start_game() {
-        let mut state = TestState::new(3);
+    async fn all_players_go_all_in() {
+        const NUM_SEATS: usize = 3;
+        let mut state = TestState::new(NUM_SEATS);
         state.test_start_game().await;
         state.test_start_hand().await;
+
+        // First player to act goes all in.
+        state
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Bet,
+                amount: JOIN_CHIPS,
+            })
+            .await;
+
+        // All players get an game update with the player action and an action
+        // request for the next player.
+        for p in state.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // Next player calls.
+        state
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Call,
+                amount: Chips::ZERO,
+            })
+            .await;
+
+        for p in state.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // Last player calls.
+        state
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Call,
+                amount: Chips::ZERO,
+            })
+            .await;
+
+        // All players went all in we should get the following messages.
+        for p in state.players.iter_mut() {
+            // All players get a game update with the flop cards.
+            assert_message!(p, Message::GameUpdate { board, pot, .. }, || {
+                assert_eq!(board.len(), 3);
+                assert_eq!(*pot, JOIN_CHIPS + JOIN_CHIPS + JOIN_CHIPS);
+            });
+
+            // All players get an update for the turn.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 4);
+            });
+
+            // And the river.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 5);
+            });
+
+            // Showdown message with all players cards.
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                for p in players {
+                    assert!(matches!(p.cards, PlayerCards::Cards(_, _)));
+                }
+            });
+
+            // All players get a EndHand message with winner.
+            assert_message!(p, Message::EndHand { payoffs }, || {
+                // Only one payoff
+                assert_eq!(payoffs.len(), 1);
+
+                // Winner wins all chips.
+                assert_eq!(payoffs[0].chips, JOIN_CHIPS + JOIN_CHIPS + JOIN_CHIPS);
+            });
+        }
     }
 }
