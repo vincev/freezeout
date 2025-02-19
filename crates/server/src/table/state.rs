@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Table state types.
-use ahash::{AHashMap, AHashSet};
+use ahash::AHashSet;
 use anyhow::{bail, Result};
 use log::{error, info};
 use rand::{rngs::StdRng, SeedableRng};
@@ -271,11 +271,11 @@ impl State {
 
     async fn action_update(&mut self) {
         self.players.activate_next_player();
+        self.broadcast_game_update().await;
 
         if self.is_round_complete() {
             self.next_round().await;
         } else {
-            self.broadcast_game_update().await;
             self.request_action().await;
         }
     }
@@ -413,11 +413,12 @@ impl State {
         self.hand_state = HandState::EndHand;
 
         self.update_pots();
+        self.broadcast_game_update().await;
+
         let winners = self.pay_bets();
 
         // Update players and broadcast update to all players.
         self.players.end_hand();
-        self.broadcast_game_update().await;
         self.broadcast(Message::EndHand { payoffs: winners }).await;
 
         // End game or set timer to start new hand.
@@ -467,7 +468,7 @@ impl State {
     }
 
     fn pay_bets(&mut self) -> Vec<HandPayoff> {
-        let mut winners = AHashMap::new();
+        let mut winners = Vec::new();
 
         match self.players.count_active() {
             1 => {
@@ -476,14 +477,11 @@ impl State {
                     for pot in self.pots.drain(..) {
                         player.chips += pot.chips;
 
-                        winners
-                            .entry(player.player_id.clone())
-                            .or_insert_with(|| HandPayoff {
-                                player_id: player.player_id.clone(),
-                                chips: Chips::ZERO,
-                                cards: Vec::default(),
-                            })
-                            .chips += pot.chips;
+                        winners.push(HandPayoff {
+                            player_id: player.player_id.clone(),
+                            chips: pot.chips,
+                            cards: Vec::default(),
+                        });
                     }
                 }
             }
@@ -514,21 +512,25 @@ impl State {
                         let mut cards = hv.hand().to_vec();
                         cards.sort_by_key(|c| c.rank());
 
-                        winners
-                            .entry(p.player_id.clone())
-                            .or_insert_with(|| HandPayoff {
+                        // If a player has already a payoff add chips to that one.
+                        if let Some(payoff) =
+                            winners.iter_mut().find(|po| po.player_id == p.player_id)
+                        {
+                            payoff.chips += pot.chips;
+                        } else {
+                            winners.push(HandPayoff {
                                 player_id: p.player_id.clone(),
-                                chips: Chips::ZERO,
+                                chips: pot.chips,
                                 cards,
-                            })
-                            .chips += pot.chips;
+                            });
+                        }
                     }
                 }
             }
             _ => {}
         }
 
-        winners.into_values().collect()
+        winners
     }
 
     /// Checks if all players in the hand have acted.
@@ -732,21 +734,26 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const JOIN_CHIPS: Chips = Chips::new(100_000);
 
     struct TestPlayer {
         p: Player,
         rx: mpsc::Receiver<TableMessage>,
         sk: SigningKey,
+        join_chips: Chips,
     }
 
     impl TestPlayer {
-        fn new(chips: Chips) -> Self {
+        fn new(join_chips: Chips) -> Self {
             let sk = SigningKey::default();
             let peer_id = sk.verifying_key().peer_id();
             let (tx, rx) = mpsc::channel(64);
-            let p = Player::new(peer_id.clone(), peer_id.digits(), chips, tx);
-            Self { p, rx, sk }
+            let p = Player::new(peer_id.clone(), peer_id.digits(), join_chips, tx);
+            Self {
+                p,
+                rx,
+                sk,
+                join_chips,
+            }
         }
 
         fn rx(&mut self) -> Option<TableMessage> {
@@ -785,22 +792,23 @@ mod tests {
         };
 }
 
-    struct TestState {
+    struct TestTable {
         state: State,
         players: Vec<TestPlayer>,
     }
 
-    impl TestState {
+    impl TestTable {
         // Creates a `State` with seeded randomness and memory database.
-        fn new(seats: usize) -> Self {
+        fn new(player_chips: Vec<u32>) -> Self {
             let rng = StdRng::seed_from_u64(121);
             let db = Db::open_in_memory().unwrap();
             let sk = Arc::new(SigningKey::default());
-            let state = State::with_rng(TableId::new_id(), seats, sk, db, rng);
-            let tp = (0..seats)
-                .map(|_| TestPlayer::new(Chips::new(1_000_000)))
+            let state = State::with_rng(TableId::new_id(), player_chips.len(), sk, db, rng);
+            let players = player_chips
+                .into_iter()
+                .map(|c| TestPlayer::new(Chips::new(c)))
                 .collect();
-            Self { state, players: tp }
+            Self { state, players }
         }
 
         async fn test_start_game(&mut self) {
@@ -810,7 +818,7 @@ mod tests {
                     .join(
                         &p.p.player_id,
                         &p.p.nickname,
-                        JOIN_CHIPS,
+                        p.join_chips,
                         p.p.table_tx.clone(),
                     )
                     .await
@@ -844,6 +852,16 @@ mod tests {
             for p in self.players.iter_mut() {
                 assert_message!(p, Message::StartGame(seats) if seats != &player_ids);
             }
+
+            // Sort test players after shuffling.
+            for (idx, p) in self.state.players.iter().enumerate() {
+                let pos = self
+                    .players
+                    .iter()
+                    .position(|tp| tp.p.player_id == p.player_id)
+                    .unwrap();
+                self.players.swap(idx, pos);
+            }
         }
 
         // Test a start hand, this should be called after test_start_game.
@@ -855,13 +873,15 @@ mod tests {
 
             // The small blind and big blind players pay the blinds.
             let sb = &self.state.players.player(0);
+            let tp = &self.players[0];
             assert_eq!(sb.bet, self.state.small_blind);
-            assert_eq!(sb.chips, JOIN_CHIPS - self.state.small_blind);
+            assert_eq!(sb.chips, tp.join_chips - self.state.small_blind);
             assert!(matches!(sb.action, PlayerAction::SmallBlind));
 
             let bb = &self.state.players.player(1);
+            let tp = &self.players[1];
             assert_eq!(bb.bet, self.state.big_blind);
-            assert_eq!(bb.chips, JOIN_CHIPS - self.state.big_blind);
+            assert_eq!(bb.chips, tp.join_chips - self.state.big_blind);
             assert!(matches!(bb.action, PlayerAction::BigBlind));
 
             // The next playe to act is after the big blind.
@@ -908,42 +928,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_players_go_all_in() {
-        const NUM_SEATS: usize = 3;
-        let mut state = TestState::new(NUM_SEATS);
-        state.test_start_game().await;
-        state.test_start_hand().await;
+    async fn all_players_all_in() {
+        const JOIN_CHIPS: u32 = 100_000;
+
+        let mut table = TestTable::new(vec![JOIN_CHIPS, JOIN_CHIPS, JOIN_CHIPS]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
 
         // First player to act goes all in.
-        state
+        table
             .send_action(Message::ActionResponse {
                 action: PlayerAction::Bet,
-                amount: JOIN_CHIPS,
+                amount: Chips::new(JOIN_CHIPS),
             })
             .await;
 
-        // All players get an game update with the player action and an action
-        // request for the next player.
-        for p in state.players.iter_mut() {
-            assert_message!(p, Message::GameUpdate { .. });
+        // All players get a game update with the player action followed by an action
+        // request for the next player to act.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[2].action, PlayerAction::Bet));
+            });
             assert_message!(p, Message::ActionRequest { .. });
         }
 
         // Next player calls.
-        state
+        table
             .send_action(Message::ActionResponse {
                 action: PlayerAction::Call,
                 amount: Chips::ZERO,
             })
             .await;
 
-        for p in state.players.iter_mut() {
-            assert_message!(p, Message::GameUpdate { .. });
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                // SB playe calls.
+                assert!(matches!(players[0].action, PlayerAction::Call));
+            });
             assert_message!(p, Message::ActionRequest { .. });
         }
 
         // Last player calls.
-        state
+        table
             .send_action(Message::ActionResponse {
                 action: PlayerAction::Call,
                 amount: Chips::ZERO,
@@ -951,11 +977,17 @@ mod tests {
             .await;
 
         // All players went all in we should get the following messages.
-        for p in state.players.iter_mut() {
+        for p in table.players.iter_mut() {
+            // BB player calls.
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                // BB playe calls.
+                assert!(matches!(players[1].action, PlayerAction::Call));
+            });
+
             // All players get a game update with the flop cards.
             assert_message!(p, Message::GameUpdate { board, pot, .. }, || {
                 assert_eq!(board.len(), 3);
-                assert_eq!(*pot, JOIN_CHIPS + JOIN_CHIPS + JOIN_CHIPS);
+                assert_eq!(*pot, Chips::new(3 * JOIN_CHIPS));
             });
 
             // All players get an update for the turn.
@@ -981,7 +1013,145 @@ mod tests {
                 assert_eq!(payoffs.len(), 1);
 
                 // Winner wins all chips.
-                assert_eq!(payoffs[0].chips, JOIN_CHIPS + JOIN_CHIPS + JOIN_CHIPS);
+                assert_eq!(payoffs[0].chips, Chips::new(300_000));
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn all_players_fold() {
+        let mut table = TestTable::new(vec![100_000, 100_000, 100_000]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // First player folds.
+        table
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Fold,
+                amount: Chips::ZERO,
+            })
+            .await;
+
+        // Game update with the last player action and request for next player.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[2].action, PlayerAction::Fold));
+            });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // Next player folds.
+        table
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Fold,
+                amount: Chips::ZERO,
+            })
+            .await;
+
+        for p in table.players.iter_mut() {
+            // Players get a game update where the small blind and the UTG folded.
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[0].action, PlayerAction::Fold));
+                assert!(matches!(players[2].action, PlayerAction::Fold));
+            });
+
+            // Players get an update with pot.
+            assert_message!(p, Message::GameUpdate { pot, .. }, || {
+                assert_eq!(*pot, table.state.big_blind + table.state.small_blind);
+            });
+
+            // Players get a EndHand message with the BB as winner.
+            assert_message!(p, Message::EndHand { payoffs }, || {
+                let payoff = &payoffs[0];
+                assert_eq!(payoff.player_id, table.state.players.player(1).player_id,);
+
+                // Winner wins blinds.
+                assert_eq!(
+                    payoff.chips,
+                    table.state.big_blind + table.state.small_blind
+                );
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn multi_pots() {
+        let mut table = TestTable::new(vec![500_000, 300_000, 100_000]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // First player to act goes all in.
+        let player = table.state.players.active_player().unwrap();
+        let amount = player.chips + player.bet;
+        table
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Bet,
+                amount,
+            })
+            .await;
+
+        // All players get a game update with the player action followed by an action
+        // request for the next player to act.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // Next player calls and goes all in.
+        let player = table.state.players.active_player().unwrap();
+        let amount = player.chips + player.bet;
+        table
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Bet,
+                amount,
+            })
+            .await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // Last player (BB) calls and goes all in.
+        let player = table.state.players.active_player().unwrap();
+        let amount = player.chips + player.bet;
+        table
+            .send_action(Message::ActionResponse {
+                action: PlayerAction::Bet,
+                amount,
+            })
+            .await;
+
+        // All players went all in we should get the following messages.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // All players get a game update with the flop cards.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // All players get an update for the turn.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // And the river.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // Showdown message with all players cards.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // All players get a EndHand message with winner.
+            assert_message!(p, Message::EndHand { payoffs }, || {
+                // We should have 3 payoffs, one player went all in with 100_000
+                // another went all in for 300_000 and another for 500_000.
+
+                // The one that went all in for 100_000 won the first pot for a total
+                // of 300_000 so the other remaining players have 200_000 and 400_000
+                // left. Of these remaining players the 200_000 won for a total of
+                // 400_000 leaving the remaining player with 200_000 that will get
+                // refundend.
+                assert_eq!(payoffs.len(), 3);
+                assert_eq!(payoffs[0].chips, Chips::new(300_000));
+                assert_eq!(payoffs[1].chips, Chips::new(400_000));
+                assert_eq!(payoffs[2].chips, Chips::new(200_000));
             });
         }
     }
