@@ -91,6 +91,22 @@ impl ops::SubAssign for Chips {
     }
 }
 
+impl ops::Div<u32> for Chips {
+    type Output = Self;
+
+    fn div(self, rhs: u32) -> Self::Output {
+        Self(self.0 / rhs)
+    }
+}
+
+impl ops::Rem<u32> for Chips {
+    type Output = Self;
+
+    fn rem(self, rhs: u32) -> Self::Output {
+        Self(self.0 % rhs)
+    }
+}
+
 impl fmt::Display for Chips {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let amount = self.0;

@@ -396,10 +396,7 @@ impl State {
     async fn enter_showdown(&mut self) {
         self.hand_state = HandState::Showdown;
 
-        self.update_pots();
-
         for player in self.players.iter_mut() {
-            player.bet = Chips::ZERO;
             player.action = PlayerAction::None;
             if player.is_active {
                 player.public_cards = player.hole_cards;
@@ -468,7 +465,7 @@ impl State {
     }
 
     fn pay_bets(&mut self) -> Vec<HandPayoff> {
-        let mut winners = Vec::new();
+        let mut payoffs = Vec::<HandPayoff>::new();
 
         match self.players.count_active() {
             1 => {
@@ -477,19 +474,26 @@ impl State {
                     for pot in self.pots.drain(..) {
                         player.chips += pot.chips;
 
-                        winners.push(HandPayoff {
-                            player_id: player.player_id.clone(),
-                            chips: pot.chips,
-                            cards: Vec::default(),
-                        });
+                        if let Some(payoff) = payoffs
+                            .iter_mut()
+                            .find(|po| po.player_id == player.player_id)
+                        {
+                            payoff.chips += pot.chips;
+                        } else {
+                            payoffs.push(HandPayoff {
+                                player_id: player.player_id.clone(),
+                                chips: pot.chips,
+                                cards: Vec::default(),
+                            });
+                        }
                     }
                 }
             }
             n if n > 1 => {
-                // With more than 1 player we need to compare hands for each pot
+                // With more than 1 active player we need to compare hands for each pot
                 for pot in self.pots.drain(..) {
-                    // Find the winner amongst all the active players in the pot.
-                    let winner = self
+                    // Evaluate all active players hands.
+                    let mut hands = self
                         .players
                         .iter_mut()
                         .filter(|p| p.is_active && pot.players.contains(&p.player_id))
@@ -503,24 +507,45 @@ impl State {
                             let hv = HandValue::eval(&cards);
                             (p, hv)
                         })
-                        .max_by(|p1, p2| p1.1.cmp(&p2.1));
+                        .collect::<Vec<_>>();
 
-                    if let Some((p, hv)) = winner {
-                        p.chips += pot.chips;
+                    // This may happen when the last pot is empty.
+                    if hands.is_empty() {
+                        continue;
+                    }
+
+                    // Sort descending order, winners first.
+                    hands.sort_by(|p1, p2| p2.1.cmp(&p1.1));
+
+                    // Count hands with the same value.
+                    let winners_count = hands.iter().filter(|(_, v)| v == &hands[0].1).count();
+                    let win_payoff = pot.chips / winners_count as u32;
+                    let win_remainder = pot.chips % winners_count as u32;
+
+                    for (idx, (player, hv)) in hands.iter_mut().take(winners_count).enumerate() {
+                        // Give remaineder to first player.
+                        let player_payoff = if idx == 0 {
+                            win_payoff + win_remainder
+                        } else {
+                            win_payoff
+                        };
+
+                        player.chips += player_payoff;
 
                         // Sort by rank for the UI.
                         let mut cards = hv.hand().to_vec();
                         cards.sort_by_key(|c| c.rank());
 
                         // If a player has already a payoff add chips to that one.
-                        if let Some(payoff) =
-                            winners.iter_mut().find(|po| po.player_id == p.player_id)
+                        if let Some(payoff) = payoffs
+                            .iter_mut()
+                            .find(|po| po.player_id == player.player_id)
                         {
-                            payoff.chips += pot.chips;
+                            payoff.chips += player_payoff;
                         } else {
-                            winners.push(HandPayoff {
-                                player_id: p.player_id.clone(),
-                                chips: pot.chips,
+                            payoffs.push(HandPayoff {
+                                player_id: player.player_id.clone(),
+                                chips: player_payoff,
                                 cards,
                             });
                         }
@@ -530,7 +555,7 @@ impl State {
             _ => {}
         }
 
-        winners
+        payoffs
     }
 
     /// Checks if all players in the hand have acted.
@@ -734,6 +759,7 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use freezeout_core::poker::{Rank, Suit};
 
     struct TestPlayer {
         p: Player,
@@ -798,7 +824,8 @@ mod tests {
     }
 
     impl TestTable {
-        // Creates a `State` with seeded randomness and memory database.
+        /// Creates a `State` with seeded randomness and memory database.
+        /// Creates a `State` with seeded randomness and memory database.
         fn new(player_chips: Vec<u32>) -> Self {
             let rng = StdRng::seed_from_u64(121);
             let db = Db::open_in_memory().unwrap();
@@ -811,6 +838,7 @@ mod tests {
             Self { state, players }
         }
 
+        /// Start the game and test it.
         async fn test_start_game(&mut self) {
             for p in self.players.iter_mut() {
                 // A player joins a table.
@@ -864,7 +892,7 @@ mod tests {
             }
         }
 
-        // Test a start hand, this should be called after test_start_game.
+        /// Test a start hand, this should be called after test_start_game.
         async fn test_start_hand(&mut self) {
             // Before a new hand starts all players get a StartHand message.
             for p in self.players.iter_mut() {
@@ -906,7 +934,7 @@ mod tests {
             }
         }
 
-        // Send an action from the current active player.
+        /// Send an action from the current active player.
         async fn send_action(&mut self, msg: Message) {
             let active_id = self
                 .state
@@ -925,6 +953,46 @@ mod tests {
                 }
             }
         }
+
+        async fn bet(&mut self, amount: Chips) {
+            self.send_action(Message::ActionResponse {
+                action: PlayerAction::Bet,
+                amount,
+            })
+            .await;
+        }
+
+        async fn call(&mut self) {
+            self.send_action(Message::ActionResponse {
+                action: PlayerAction::Call,
+                amount: Chips::ZERO,
+            })
+            .await;
+        }
+
+        async fn check(&mut self) {
+            self.send_action(Message::ActionResponse {
+                action: PlayerAction::Check,
+                amount: Chips::ZERO,
+            })
+            .await;
+        }
+
+        async fn fold(&mut self) {
+            self.send_action(Message::ActionResponse {
+                action: PlayerAction::Fold,
+                amount: Chips::ZERO,
+            })
+            .await;
+        }
+
+        /// Drain players messages for tests where we are not interested in the
+        /// messages players are getting.
+        fn drain_players_message(&mut self) {
+            for p in self.players.iter_mut() {
+                while p.rx().is_some() {}
+            }
+        }
     }
 
     #[tokio::test]
@@ -936,12 +1004,7 @@ mod tests {
         table.test_start_hand().await;
 
         // First player to act goes all in.
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Bet,
-                amount: Chips::new(JOIN_CHIPS),
-            })
-            .await;
+        table.bet(Chips::new(JOIN_CHIPS)).await;
 
         // All players get a game update with the player action followed by an action
         // request for the next player to act.
@@ -953,12 +1016,7 @@ mod tests {
         }
 
         // Next player calls.
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Call,
-                amount: Chips::ZERO,
-            })
-            .await;
+        table.call().await;
 
         for p in table.players.iter_mut() {
             assert_message!(p, Message::GameUpdate { players, .. }, || {
@@ -969,12 +1027,7 @@ mod tests {
         }
 
         // Last player calls.
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Call,
-                amount: Chips::ZERO,
-            })
-            .await;
+        table.call().await;
 
         // All players went all in we should get the following messages.
         for p in table.players.iter_mut() {
@@ -1025,12 +1078,7 @@ mod tests {
         table.test_start_hand().await;
 
         // First player folds.
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Fold,
-                amount: Chips::ZERO,
-            })
-            .await;
+        table.fold().await;
 
         // Game update with the last player action and request for next player.
         for p in table.players.iter_mut() {
@@ -1041,12 +1089,7 @@ mod tests {
         }
 
         // Next player folds.
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Fold,
-                amount: Chips::ZERO,
-            })
-            .await;
+        table.fold().await;
 
         for p in table.players.iter_mut() {
             // Players get a game update where the small blind and the UTG folded.
@@ -1083,12 +1126,7 @@ mod tests {
         // First player to act goes all in.
         let player = table.state.players.active_player().unwrap();
         let amount = player.chips + player.bet;
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Bet,
-                amount,
-            })
-            .await;
+        table.bet(amount).await;
 
         // All players get a game update with the player action followed by an action
         // request for the next player to act.
@@ -1100,12 +1138,7 @@ mod tests {
         // Next player calls and goes all in.
         let player = table.state.players.active_player().unwrap();
         let amount = player.chips + player.bet;
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Bet,
-                amount,
-            })
-            .await;
+        table.bet(amount).await;
 
         for p in table.players.iter_mut() {
             assert_message!(p, Message::GameUpdate { .. });
@@ -1115,12 +1148,7 @@ mod tests {
         // Last player (BB) calls and goes all in.
         let player = table.state.players.active_player().unwrap();
         let amount = player.chips + player.bet;
-        table
-            .send_action(Message::ActionResponse {
-                action: PlayerAction::Bet,
-                amount,
-            })
-            .await;
+        table.bet(amount).await;
 
         // All players went all in we should get the following messages.
         for p in table.players.iter_mut() {
@@ -1152,6 +1180,63 @@ mod tests {
                 assert_eq!(payoffs[0].chips, Chips::new(300_000));
                 assert_eq!(payoffs[1].chips, Chips::new(400_000));
                 assert_eq!(payoffs[2].chips, Chips::new(200_000));
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn split_win() {
+        const JOIN_CHIPS: u32 = 100_000;
+
+        let mut table = TestTable::new(vec![JOIN_CHIPS, JOIN_CHIPS, JOIN_CHIPS]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // Set player cards so that we get a split win (another player has 7D 9H).
+        let p = table.state.players.iter_mut().next().unwrap();
+        p.hole_cards = PlayerCards::Cards(
+            Card::new(Rank::Seven, Suit::Spades),
+            Card::new(Rank::Nine, Suit::Diamonds),
+        );
+
+        // Preflop.
+        table.bet(Chips::new(50_000)).await;
+        table.call().await;
+        table.call().await;
+        table.drain_players_message();
+
+        // Flop
+        table.check().await;
+        table.check().await;
+        table.check().await;
+        table.drain_players_message();
+
+        // Turn
+        table.check().await;
+        table.check().await;
+        table.check().await;
+        table.drain_players_message();
+
+        // River
+        table.check().await;
+        table.check().await;
+        table.drain_players_message();
+
+        table.check().await;
+
+        for p in table.players.iter_mut() {
+            // Update following last player check.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // Game update with showdown.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            assert_message!(p, Message::EndHand { payoffs }, || {
+                // We should have 2 payoffs, with equal amount as two players have
+                // the same cards value (7S, 9D) and (7D, 9H)
+                assert_eq!(payoffs.len(), 2);
+                assert_eq!(payoffs[0].chips, Chips::new(75_000));
+                assert_eq!(payoffs[1].chips, Chips::new(75_000));
             });
         }
     }
