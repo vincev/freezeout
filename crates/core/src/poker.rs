@@ -91,6 +91,14 @@ impl ops::SubAssign for Chips {
     }
 }
 
+impl ops::Mul<u32> for Chips {
+    type Output = Self;
+
+    fn mul(self, rhs: u32) -> Self::Output {
+        Self(self.0 * rhs)
+    }
+}
+
 impl ops::Div<u32> for Chips {
     type Output = Self;
 

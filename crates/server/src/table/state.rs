@@ -67,6 +67,7 @@ pub struct State {
     hand_state: HandState,
     small_blind: Chips,
     big_blind: Chips,
+    hand_count: usize,
     players: PlayersState,
     deck: Deck,
     last_bet: Chips,
@@ -80,6 +81,8 @@ pub struct State {
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
     const NEW_HAND_TIMEOUT: Duration = Duration::from_secs(10);
+    const START_GAME_SB: Chips = Chips::new(10_000);
+    const START_GAME_BB: Chips = Chips::new(20_000);
 
     /// Create a new state.
     pub fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
@@ -100,8 +103,9 @@ impl State {
             sk,
             db,
             hand_state: HandState::WaitForPlayers,
-            small_blind: 10_000.into(),
-            big_blind: 20_000.into(),
+            small_blind: Self::START_GAME_SB,
+            big_blind: Self::START_GAME_BB,
+            hand_count: 0,
             players: PlayersState::default(),
             deck: Deck::new_and_shuffled(&mut rng),
             last_bet: Chips::ZERO,
@@ -310,6 +314,8 @@ impl State {
             return;
         }
 
+        self.update_blinds();
+
         // Pay small and big blind.
         if let Some(player) = self.players.active_player() {
             player.bet(PlayerAction::SmallBlind, self.small_blind);
@@ -467,7 +473,26 @@ impl State {
         }
 
         self.players.clear();
+
+        // Reset hand count for next game.
+        self.hand_count = 0;
+
+        // Wait for players to join.
         self.hand_state = HandState::WaitForPlayers;
+    }
+
+    fn update_blinds(&mut self) {
+        let multiplier = (1 << (self.hand_count / 4)) as u32;
+        if multiplier < 16 {
+            self.small_blind = Self::START_GAME_SB * multiplier;
+            self.big_blind = Self::START_GAME_BB * multiplier;
+        } else {
+            // Cap at 12 times initial blinds.
+            self.small_blind = Self::START_GAME_SB * 12;
+            self.big_blind = Self::START_GAME_BB * 12;
+        }
+
+        self.hand_count += 1;
     }
 
     fn pay_bets(&mut self) -> Vec<HandPayoff> {
@@ -1245,5 +1270,35 @@ mod tests {
                 assert_eq!(payoffs[1].chips, Chips::new(75_000));
             });
         }
+    }
+
+    #[tokio::test]
+    async fn blinds_increment() {
+        let mut table = TestTable::new(vec![100_000, 100_000]);
+
+        // First 4 hands blinds have initial value.
+        (0..4).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB);
+
+        // Next for hands blinds double.
+        (0..4).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB * 2);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB * 2);
+
+        // Next 4 hands blinds double again.
+        (0..4).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB * 4);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB * 4);
+
+        // Next 4 hands blinds double again.
+        (0..4).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB * 8);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB * 8);
+
+        // After that we keep them at the same level
+        (0..8).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB * 12);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB * 12);
     }
 }
