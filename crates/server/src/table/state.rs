@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{sync::mpsc, time};
+use tokio::sync::mpsc;
 
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
@@ -73,7 +73,7 @@ pub struct State {
     min_raise: Chips,
     pots: Vec<Pot>,
     board: Vec<Card>,
-    new_hand_start_time: Option<Instant>,
+    end_hand_timer: Option<Instant>,
     rng: StdRng,
 }
 
@@ -108,7 +108,7 @@ impl State {
             min_raise: Chips::ZERO,
             pots: vec![Pot::default()],
             board: Vec::default(),
-            new_hand_start_time: None,
+            end_hand_timer: None,
             rng,
         }
     }
@@ -244,10 +244,15 @@ impl State {
     }
 
     pub async fn tick(&mut self) {
-        if let Some(dt) = self.new_hand_start_time {
+        if let Some(dt) = self.end_hand_timer {
             if dt.elapsed() >= Self::NEW_HAND_TIMEOUT {
-                self.new_hand_start_time = None;
-                self.enter_start_hand().await;
+                self.end_hand_timer = None;
+
+                match self.hand_state {
+                    HandState::EndHand => self.end_hand_timer_action().await,
+                    HandState::EndGame => self.end_game_timer_action().await,
+                    _ => {}
+                }
             }
         }
 
@@ -423,31 +428,32 @@ impl State {
             self.enter_end_game().await;
         } else {
             // Set timer for starting a new hand.
-            self.new_hand_start_time = Some(Instant::now());
-
-            // Wait before removing players.
-            time::sleep(Self::NEW_HAND_TIMEOUT).await;
-
-            // All players that run out of chips must leave the table.
-            for player in self.players.iter() {
-                if player.chips == Chips::ZERO {
-                    let _ = player.table_tx.send(TableMessage::LeaveTable).await;
-
-                    let msg = Message::PlayerLeft(player.player_id.clone());
-                    self.broadcast(msg).await;
-                }
-            }
-
-            self.players.remove_with_no_chips();
+            self.end_hand_timer = Some(Instant::now());
         }
+    }
+
+    async fn end_hand_timer_action(&mut self) {
+        // All players that run out of chips must leave the table before the
+        // start of a new hand.
+        for player in self.players.iter() {
+            if player.chips == Chips::ZERO {
+                let _ = player.table_tx.send(TableMessage::LeaveTable).await;
+
+                let msg = Message::PlayerLeft(player.player_id.clone());
+                self.broadcast(msg).await;
+            }
+        }
+
+        self.players.remove_with_no_chips();
+        self.enter_start_hand().await;
     }
 
     async fn enter_end_game(&mut self) {
         self.hand_state = HandState::EndGame;
+        self.end_hand_timer = Some(Instant::now());
+    }
 
-        // Wait some time to give time to player to see the end game.
-        time::sleep(Duration::from_secs(5)).await;
-
+    async fn end_game_timer_action(&mut self) {
         // Pay the players and tell them the game has finished and leave the table.
         for player in self.players.iter() {
             let _ = player.table_tx.send(TableMessage::LeaveTable).await;
