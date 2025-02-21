@@ -168,6 +168,7 @@ impl GameState {
             }
             Message::EndHand { payoffs } => {
                 self.action_request = None;
+                self.pot = Chips::ZERO;
 
                 // Update winnings for each winning player.
                 for payoff in payoffs {
