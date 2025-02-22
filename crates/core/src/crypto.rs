@@ -4,7 +4,7 @@
 //! Cryptographic types for signing messages.
 use anyhow::Result;
 use bip32::Mnemonic;
-use blake2::{digest, digest::typenum::ToInt, Blake2s, Digest};
+use blake2::{Blake2s, Digest, digest, digest::typenum::ToInt};
 use ed25519_dalek::{Signer, Verifier};
 use serde::{Deserialize, Serialize};
 use std::fmt;

@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Noise protocol encrypted WebSocket connection types.
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
-use snow::{params::NoiseParams, TransportState};
+use snow::{TransportState, params::NoiseParams};
 use std::sync::LazyLock;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    self as websocket,
-    tungstenite::{protocol::WebSocketConfig, Message as WsMessage},
-    MaybeTlsStream, WebSocketStream,
+    self as websocket, MaybeTlsStream, WebSocketStream,
+    tungstenite::{Message as WsMessage, protocol::WebSocketConfig},
 };
 
 use freezeout_core::message::SignedMessage;

@@ -3,9 +3,9 @@
 
 //! Table state types.
 use ahash::AHashSet;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use log::{error, info};
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -21,8 +21,8 @@ use freezeout_core::{
 use crate::db::Db;
 
 use super::{
-    player::{Player, PlayersState},
     TableMessage,
+    player::{Player, PlayersState},
 };
 
 /// The hand state.
@@ -615,7 +615,7 @@ impl State {
                     PlayerAction::None | PlayerAction::SmallBlind | PlayerAction::BigBlind
                         if player.chips > Chips::ZERO =>
                     {
-                        return false
+                        return false;
                     }
                     _ => {}
                 }

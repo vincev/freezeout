@@ -7,5 +7,5 @@
 pub mod connection;
 pub mod db;
 pub mod server;
-pub use server::{run, Config};
+pub use server::{Config, run};
 pub mod table;

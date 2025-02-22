@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Noise protocol encrypted WebSocket connection.
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use eframe::egui;
 use ewebsock::{WsEvent, WsMessage, WsReceiver, WsSender};
-use snow::{params::NoiseParams, HandshakeState, TransportState};
+use snow::{HandshakeState, TransportState, params::NoiseParams};
 use std::sync::LazyLock;
 
 use freezeout_core::message::SignedMessage;
