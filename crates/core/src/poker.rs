@@ -12,7 +12,7 @@ mod eval;
 pub use eval::{HandRank, HandValue};
 
 /// A unique table identifier.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TableId(u32);
 
 impl TableId {

@@ -117,6 +117,16 @@ impl State {
         }
     }
 
+    /// Returns true if the game at this table has started.
+    pub fn has_game_started(&self) -> bool {
+        !matches!(self.hand_state, HandState::WaitForPlayers)
+    }
+
+    /// Checks if the table has any players left.
+    pub fn is_empty(&self) -> bool {
+        self.players.count() == 0
+    }
+
     /// A player tries to join the table.
     pub async fn join(
         &mut self,
@@ -251,12 +261,7 @@ impl State {
         if let Some(dt) = self.end_hand_timer {
             if dt.elapsed() >= Self::NEW_HAND_TIMEOUT {
                 self.end_hand_timer = None;
-
-                match self.hand_state {
-                    HandState::EndHand => self.end_hand_timer_action().await,
-                    HandState::EndGame => self.end_game_timer_action().await,
-                    _ => {}
-                }
+                self.end_hand_timer_action().await;
             }
         }
 
@@ -456,13 +461,9 @@ impl State {
 
     async fn enter_end_game(&mut self) {
         self.hand_state = HandState::EndGame;
-        self.end_hand_timer = Some(Instant::now());
-    }
 
-    async fn end_game_timer_action(&mut self) {
-        // Pay the players and tell them the game has finished and leave the table.
         for player in self.players.iter() {
-            let _ = player.table_tx.send(TableMessage::LeaveTable).await;
+            // Pay the winning player.
             let res = self
                 .db
                 .pay_to_player(player.player_id.clone(), player.chips)
@@ -470,6 +471,10 @@ impl State {
             if let Err(e) = res {
                 error!("Db players update failed {e}");
             }
+
+            // Notify the client that the game has ended and leave the table.
+            let _ = player.table_tx.send(TableMessage::EndGame).await;
+            let _ = player.table_tx.send(TableMessage::LeaveTable).await;
         }
 
         self.players.clear();

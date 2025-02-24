@@ -17,7 +17,7 @@ use tokio::{
 };
 
 use freezeout_core::{
-    crypto::{PeerId, SigningKey},
+    crypto::SigningKey,
     message::{Message, SignedMessage},
     poker::Chips,
 };
@@ -26,6 +26,7 @@ use crate::{
     connection::{self, EncryptedConnection},
     db::Db,
     table::{Table, TableMessage},
+    tables_pool::TablesPool,
 };
 
 /// Networking config.
@@ -61,14 +62,14 @@ pub async fn run(config: Config) -> Result<()> {
     let (shutdown_broadcast_tx, _) = broadcast::channel(1);
     let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel(1);
 
-    let tables = Arc::new(Tables::new(
+    let tables = TablesPool::new(
         config.tables,
         config.seats,
         sk.clone(),
         db.clone(),
         &shutdown_broadcast_tx,
         &shutdown_complete_tx,
-    ));
+    );
 
     let mut server = Server {
         tables,
@@ -108,7 +109,7 @@ pub async fn run(config: Config) -> Result<()> {
 #[derive(Debug)]
 struct Server {
     /// The tables on this server.
-    tables: Arc<Tables>,
+    tables: TablesPool,
     /// The server signing key shared by all connections.
     sk: Arc<SigningKey>,
     /// The players DB.
@@ -169,60 +170,10 @@ impl Server {
     }
 }
 
-/// The tables on this server.
-#[derive(Debug)]
-struct Tables(Vec<Arc<Table>>);
-
-impl Tables {
-    /// Creates a new table set.
-    fn new(
-        tables: usize,
-        seats: usize,
-        sk: Arc<SigningKey>,
-        db: Db,
-        shutdown_broadcast_tx: &broadcast::Sender<()>,
-        shutdown_complete_tx: &mpsc::Sender<()>,
-    ) -> Self {
-        Self(
-            (0..tables)
-                .map(|_| {
-                    Arc::new(Table::new(
-                        seats,
-                        sk.clone(),
-                        db.clone(),
-                        shutdown_broadcast_tx.subscribe(),
-                        shutdown_complete_tx.clone(),
-                    ))
-                })
-                .collect(),
-        )
-    }
-
-    async fn join(
-        &self,
-        player_id: &PeerId,
-        nickname: &str,
-        join_chips: Chips,
-        table_tx: mpsc::Sender<TableMessage>,
-    ) -> Option<Arc<Table>> {
-        for table in &self.0 {
-            if table
-                .join(player_id, nickname, join_chips, table_tx.clone())
-                .await
-                .is_ok()
-            {
-                return Some(table.clone());
-            }
-        }
-
-        None
-    }
-}
-
 /// Client connection handler.
 struct Handler {
     /// The tables on this server.
-    tables: Arc<Tables>,
+    tables: TablesPool,
     /// The server signing key shared by all connections.
     sk: Arc<SigningKey>,
     /// The players DB.
@@ -316,21 +267,28 @@ impl Handler {
             match branch {
                 Branch::Conn(msg) => match msg.message() {
                     Message::JoinTable => {
-                        let join_chips = Self::JOIN_TABLE_CHIPS;
                         // Pay chips to joins a table.
                         let has_chips = self
                             .db
-                            .pay_from_player(player_id.clone(), join_chips)
+                            .pay_from_player(player_id.clone(), Self::JOIN_TABLE_CHIPS)
                             .await?;
                         if has_chips {
                             // Try to find a table
                             self.table = self
                                 .tables
-                                .join(&player_id, &nickname, join_chips, table_tx.clone())
+                                .join(
+                                    &player_id,
+                                    &nickname,
+                                    Self::JOIN_TABLE_CHIPS,
+                                    table_tx.clone(),
+                                )
                                 .await;
+
                             // If no table has been found refund chips and notify client.
                             if self.table.is_none() {
-                                self.db.pay_to_player(player_id.clone(), join_chips).await?;
+                                self.db
+                                    .pay_to_player(player_id.clone(), Self::JOIN_TABLE_CHIPS)
+                                    .await?;
 
                                 conn.send(&SignedMessage::new(&self.sk, Message::NoTablesLeft))
                                     .await?;
@@ -361,12 +319,22 @@ impl Handler {
 
                         let player = self.db.get_player(player_id.clone()).await?;
 
+                        // Give some time to the UI before transitioning to the
+                        // account dialog.
+                        time::sleep(Duration::from_secs(5)).await;
+
                         // Tell the client to show the account dialog.
                         let msg = Message::ShowAccount {
                             chips: player.chips,
                         };
 
                         conn.send(&SignedMessage::new(&self.sk, msg)).await?;
+                    }
+                    TableMessage::EndGame => {
+                        // Notify the pool that the game for this table has ended.
+                        if let Some(table) = &self.table {
+                            self.tables.release(table.table_id()).await;
+                        }
                     }
                     TableMessage::Close => {
                         info!("Connection closed by table message");
@@ -378,6 +346,9 @@ impl Handler {
 
         if let Some(table) = &self.table {
             table.leave(&player_id).await;
+            if table.is_empty().await {
+                self.tables.release(table.table_id()).await;
+            }
         }
 
         res

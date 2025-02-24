@@ -28,6 +28,8 @@ use state::State;
 pub struct Table {
     /// Channel for sending commands.
     commands_tx: mpsc::Sender<TableCommand>,
+    /// This table id.
+    table_id: TableId,
 }
 
 /// A message sent to player connections.
@@ -37,6 +39,8 @@ pub enum TableMessage {
     Send(SignedMessage),
     /// Tell the client to leave the table.
     LeaveTable,
+    /// The game has ended.
+    EndGame,
     /// Close a client connection.
     Close,
 }
@@ -52,6 +56,10 @@ enum TableCommand {
         table_tx: mpsc::Sender<TableMessage>,
         resp_tx: oneshot::Sender<Result<()>>,
     },
+    /// Query if the table game has started.
+    HasGameStarted { resp_tx: oneshot::Sender<bool> },
+    /// Query if all players left the table.
+    IsEmpty { resp_tx: oneshot::Sender<bool> },
     /// Leave this table.
     Leave(PeerId),
     /// Handle a player message.
@@ -72,8 +80,10 @@ impl Table {
 
         let (commands_tx, commands_rx) = mpsc::channel(128);
 
+        let table_id = TableId::new_id();
+
         let mut task = TableTask {
-            table_id: TableId::new_id(),
+            table_id,
             seats,
             sk,
             db,
@@ -90,7 +100,47 @@ impl Table {
             info!("Table task for table {} stopped", task.table_id);
         });
 
-        Self { commands_tx }
+        Self {
+            commands_tx,
+            table_id,
+        }
+    }
+
+    /// Returns this table id.
+    pub fn table_id(&self) -> TableId {
+        self.table_id
+    }
+
+    /// Checks if this table is waiting for players to join.
+    pub async fn has_game_started(&self) -> bool {
+        let (resp_tx, resp_rx) = oneshot::channel();
+
+        let res = self
+            .commands_tx
+            .send(TableCommand::HasGameStarted { resp_tx })
+            .await
+            .is_ok();
+        if !res {
+            false
+        } else {
+            resp_rx.await.unwrap_or(false)
+        }
+    }
+
+    /// Checks if this table is waiting for players to join.
+    pub async fn is_empty(&self) -> bool {
+        let (resp_tx, resp_rx) = oneshot::channel();
+
+        let res = self
+            .commands_tx
+            .send(TableCommand::IsEmpty { resp_tx })
+            .await
+            .is_ok();
+        if !res {
+            false
+        } else {
+            resp_rx.await.unwrap_or(false)
+        }
     }
 
     /// A player joins this table.
@@ -165,6 +215,14 @@ impl TableTask {
                 res = self.commands_rx.recv() => match res {
                     Some(TableCommand::Join{ player_id, nickname, join_chips, table_tx, resp_tx }) => {
                         let res = state.join(&player_id, &nickname, join_chips, table_tx).await;
+                        let _ = resp_tx.send(res);
+                    }
+                    Some(TableCommand::HasGameStarted { resp_tx }) => {
+                        let res = state.has_game_started();
+                        let _ = resp_tx.send(res);
+                    }
+                    Some(TableCommand::IsEmpty { resp_tx }) => {
+                        let res = state.is_empty();
                         let _ = resp_tx.send(res);
                     }
                     Some(TableCommand::Leave(peer_id)) => {
