@@ -19,6 +19,7 @@ pub struct AccountView {
     error: String,
     connection_closed: bool,
     table_joined: bool,
+    message: String,
 }
 
 impl AccountView {
@@ -32,6 +33,7 @@ impl AccountView {
             error: String::default(),
             connection_closed: false,
             table_joined: false,
+            message: String::default(),
         }
     }
 }
@@ -49,8 +51,17 @@ impl View for AccountView {
                     self.error = format!("Connection error {e}");
                 }
                 ConnectionEvent::Message(msg) => {
-                    if let Message::TableJoined { .. } = msg.message() {
-                        self.table_joined = true;
+                    match msg.message() {
+                        Message::TableJoined { .. } => {
+                            self.table_joined = true;
+                        }
+                        Message::NotEnoughChips => {
+                            self.message = "Not enough chips to play, reconnect later".to_string();
+                        }
+                        Message::NoTablesLeft => {
+                            self.message = "All tables are busy, reconnect later".to_string();
+                        }
+                        _ => {}
                     }
 
                     self.game_state.handle_message(msg, app);
@@ -86,6 +97,16 @@ impl View for AccountView {
                 ui.add_space(10.0);
 
                 ui.vertical_centered(|ui| {
+                    if !self.message.is_empty() {
+                        ui.label(
+                            RichText::new(&self.message)
+                                .font(TEXT_FONT)
+                                .color(Color32::RED),
+                        );
+
+                        ui.add_space(10.0);
+                    }
+
                     let btn = Button::new(RichText::new("Join Table").font(TEXT_FONT));
                     if ui.add_sized(vec2(180.0, 30.0), btn).clicked() {
                         app.send_message(Message::JoinTable);
