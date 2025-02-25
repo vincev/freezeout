@@ -223,37 +223,33 @@ impl State {
 
     /// Handle a message from a player.
     pub async fn message(&mut self, msg: SignedMessage) {
-        match msg.message() {
-            Message::ActionResponse { action, amount } => {
-                if let Some(player) = self.players.active_player() {
-                    // Only process responses coming from active player.
-                    if player.player_id == msg.sender() {
-                        player.action = *action;
-                        player.action_timer = None;
+        if let Message::ActionResponse { action, amount } = msg.message() {
+            if let Some(player) = self.players.active_player() {
+                // Only process responses coming from active player.
+                if player.player_id == msg.sender() {
+                    player.action = *action;
+                    player.action_timer = None;
 
-                        match action {
-                            PlayerAction::Fold => {
-                                player.fold();
-                            }
-                            PlayerAction::Call => {
-                                player.bet(*action, self.last_bet);
-                            }
-                            PlayerAction::Check => {}
-                            PlayerAction::Bet | PlayerAction::Raise => {
-                                let amount = *amount.min(&(player.bet + player.chips));
-                                self.min_raise = (amount - self.last_bet).max(self.min_raise);
-                                self.last_bet = amount.max(self.last_bet);
-                                player.bet(*action, amount);
-                            }
-                            _ => {}
+                    match action {
+                        PlayerAction::Fold => {
+                            player.fold();
                         }
-
-                        self.action_update().await;
+                        PlayerAction::Call => {
+                            player.bet(*action, self.last_bet);
+                        }
+                        PlayerAction::Check => {}
+                        PlayerAction::Bet | PlayerAction::Raise => {
+                            let amount = *amount.min(&(player.bet + player.chips));
+                            self.min_raise = (amount - self.last_bet).max(self.min_raise);
+                            self.last_bet = amount.max(self.last_bet);
+                            player.bet(*action, amount);
+                        }
+                        _ => {}
                     }
+
+                    self.action_update().await;
                 }
             }
-            Message::Error(e) => error!("Error {e}"),
-            _ => {}
         }
     }
 
@@ -315,7 +311,7 @@ impl State {
 
         // If there are fewer than 2 active players end the game.
         if self.players.count_active() < 2 {
-            self.enter_end_hand().await;
+            self.enter_end_game().await;
             return;
         }
 

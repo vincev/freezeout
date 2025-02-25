@@ -77,7 +77,6 @@ pub struct GameState {
     table_id: TableId,
     seats: usize,
     game_started: bool,
-    error: Option<String>,
     players: Vec<Player>,
     action_request: Option<ActionRequest>,
     board: Vec<Card>,
@@ -90,7 +89,6 @@ impl Default for GameState {
             table_id: TableId::NO_TABLE,
             seats: 0,
             game_started: false,
-            error: None,
             players: Vec::default(),
             action_request: None,
             board: Vec::default(),
@@ -203,7 +201,6 @@ impl GameState {
                 self.board = board.clone();
                 self.pot = *pot;
             }
-            Message::Error(e) => self.error = Some(e.clone()),
             Message::ActionRequest {
                 player_id,
                 min_raise,

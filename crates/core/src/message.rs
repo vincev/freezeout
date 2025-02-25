@@ -95,8 +95,6 @@ pub enum Message {
         /// The amount for this action (only used for bet and raise actions)
         amount: Chips,
     },
-    /// An error message.
-    Error(String),
 }
 
 /// A player update details.

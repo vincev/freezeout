@@ -165,7 +165,7 @@ mod tests {
             assert!(matches!(msg.message(), Message::JoinServer { nickname} if nickname == "Bob"));
 
             let msg = con.recv().await.unwrap().unwrap();
-            assert!(matches!(msg.message(), Message::Error(e) if e == "error"));
+            assert!(matches!(msg.message(), Message::JoinTable));
 
             tx.send(()).unwrap();
         });
@@ -180,7 +180,7 @@ mod tests {
         );
         con.send(&msg).await.unwrap();
 
-        let msg = SignedMessage::new(&keypair, Message::Error("error".to_string()));
+        let msg = SignedMessage::new(&keypair, Message::JoinTable);
         con.send(&msg).await.unwrap();
 
         rx.await.unwrap();
