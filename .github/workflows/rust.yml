@@ -1,4 +1,4 @@
-name: ci
+name: Rust build
 
 concurrency:
   group: ${{ github.repository }}-${{ github.head_ref || github.sha }}-${{ github.workflow }}
