@@ -36,7 +36,7 @@ impl Card {
     pub fn new(rank: Rank, suit: Suit) -> Card {
         let (rank, suit) = (rank as u32, suit as u32);
         Card {
-            card_id: PRIMES[rank as usize] | rank << 8 | suit << 12 | 1 << (rank + 16),
+            card_id: PRIMES[rank as usize] | (rank << 8) | (suit << 12) | (1 << (rank + 16)),
         }
     }
 

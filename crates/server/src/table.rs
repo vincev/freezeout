@@ -38,9 +38,7 @@ pub enum TableMessage {
     /// Sends a message to a client.
     Send(SignedMessage),
     /// Tell the client to leave the table.
-    LeaveTable,
-    /// The game has ended.
-    EndGame,
+    PlayerLeft,
     /// Close a client connection.
     Close,
 }
@@ -49,7 +47,7 @@ pub enum TableMessage {
 #[derive(Debug)]
 enum TableCommand {
     /// Join this table.
-    Join {
+    TryJoin {
         player_id: PeerId,
         nickname: String,
         join_chips: Chips,
@@ -146,7 +144,7 @@ impl Table {
     /// A player joins this table.
     ///
     /// Returns error if the table is full or the player has already joined.
-    pub async fn join(
+    pub async fn try_join(
         &self,
         player_id: &PeerId,
         nickname: &str,
@@ -156,7 +154,7 @@ impl Table {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         self.commands_tx
-            .send(TableCommand::Join {
+            .send(TableCommand::TryJoin {
                 player_id: player_id.clone(),
                 nickname: nickname.to_string(),
                 join_chips,
@@ -213,8 +211,8 @@ impl TableTask {
                 }
                 // We have received a message from the client.
                 res = self.commands_rx.recv() => match res {
-                    Some(TableCommand::Join{ player_id, nickname, join_chips, table_tx, resp_tx }) => {
-                        let res = state.join(&player_id, &nickname, join_chips, table_tx).await;
+                    Some(TableCommand::TryJoin{ player_id, nickname, join_chips, table_tx, resp_tx }) => {
+                        let res = state.try_join(&player_id, &nickname, join_chips, table_tx).await;
                         let _ = resp_tx.send(res);
                     }
                     Some(TableCommand::HasGameStarted { resp_tx }) => {

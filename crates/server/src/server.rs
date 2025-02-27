@@ -312,7 +312,7 @@ impl Handler {
                             break err;
                         }
                     }
-                    TableMessage::LeaveTable => {
+                    TableMessage::PlayerLeft => {
                         // If a player leaves the table reset the table and send
                         // updated player account information to the client.
                         self.table = None;
@@ -330,12 +330,6 @@ impl Handler {
 
                         conn.send(&SignedMessage::new(&self.sk, msg)).await?;
                     }
-                    TableMessage::EndGame => {
-                        // Notify the pool that the game for this table has ended.
-                        if let Some(table) = &self.table {
-                            self.tables.release(table.table_id()).await;
-                        }
-                    }
                     TableMessage::Close => {
                         info!("Connection closed by table message");
                         break Ok(());
@@ -346,9 +340,6 @@ impl Handler {
 
         if let Some(table) = &self.table {
             table.leave(&player_id).await;
-            if table.is_empty().await {
-                self.tables.release(table.table_id()).await;
-            }
         }
 
         res

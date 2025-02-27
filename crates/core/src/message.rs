@@ -228,12 +228,12 @@ mod tests {
 
     #[test]
     fn signed_message() {
-        let keypair = SigningKey::default();
+        let sk = SigningKey::default();
         let message = Message::JoinServer {
             nickname: "Alice".to_string(),
         };
 
-        let smsg = SignedMessage::new(&keypair, message);
+        let smsg = SignedMessage::new(&sk, message);
         let bytes = smsg.serialize();
 
         let deser_msg = SignedMessage::deserialize_and_verify(&bytes).unwrap();

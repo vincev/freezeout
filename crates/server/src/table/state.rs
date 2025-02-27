@@ -128,7 +128,7 @@ impl State {
     }
 
     /// A player tries to join the table.
-    pub async fn join(
+    pub async fn try_join(
         &mut self,
         player_id: &PeerId,
         nickname: &str,
@@ -444,7 +444,8 @@ impl State {
         // start of a new hand.
         for player in self.players.iter() {
             if player.chips == Chips::ZERO {
-                let _ = player.table_tx.send(TableMessage::LeaveTable).await;
+                // Notify the client that this player has left the table.
+                let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
 
                 let msg = Message::PlayerLeft(player.player_id.clone());
                 self.broadcast(msg).await;
@@ -468,9 +469,8 @@ impl State {
                 error!("Db players update failed {e}");
             }
 
-            // Notify the client that the game has ended and leave the table.
-            let _ = player.table_tx.send(TableMessage::EndGame).await;
-            let _ = player.table_tx.send(TableMessage::LeaveTable).await;
+            // Notify the client that this player has left the table.
+            let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
         }
 
         self.players.clear();
@@ -875,7 +875,7 @@ mod tests {
             for p in self.players.iter_mut() {
                 // A player joins a table.
                 self.state
-                    .join(
+                    .try_join(
                         &p.p.player_id,
                         &p.p.nickname,
                         p.join_chips,
