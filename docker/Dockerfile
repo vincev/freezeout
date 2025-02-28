@@ -1,35 +1,28 @@
 FROM rust:latest as builder
 
-RUN cargo install trunk && \
-    apt-get update && \
-    apt-get install -y musl-tools
+# Install wasm target and trunk for trunk build.
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install trunk
 
 WORKDIR /app
 COPY . .
 
-# Install musl and wasm targets
-RUN rustup target add x86_64-unknown-linux-musl && \
-    rustup target add wasm32-unknown-unknown
-
 # Build the game server.
-RUN cargo build \
-    --release \
-    --target x86_64-unknown-linux-musl \
-    --package freezeout-server
+RUN cargo build --release --package freezeout-server
 
 # Build the client wasm application.
 WORKDIR /app/crates/gui
 RUN trunk build --release
 
 # Build runtime image
-FROM nginx:alpine
+FROM nginx:latest
 
-# Copy the game server application to the runtime.
+# Copy the game server application from the builder image.
 COPY --from=builder \
-    /app/target/x86_64-unknown-linux-musl/release/freezeout-server \
+    /app/target/release/freezeout-server \
     /usr/local/bin/freezeout-server
 
-# Copy the wasm client to the nginx folder.
+# Copy the wasm client from the builder image.
 COPY --from=builder /app/crates/gui/dist /usr/share/nginx/html
 
 # Copy the Nginx configuration file.
