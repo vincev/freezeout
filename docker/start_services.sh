@@ -29,7 +29,12 @@ fi
 # Start Poker server in background.
 echo "Starting Poker server on port ${PORT}"
 echo "Poker server running with ${TABLES} tables and ${SEATS} seats per table."
-freezeout-server -a 0.0.0.0 -p $PORT --tables $TABLES --seats $SEATS & pid=$!
+freezeout-server \
+    -a 0.0.0.0 \
+    -p $PORT \
+    --tables $TABLES \
+    --seats $SEATS \
+    --data-path /usr/local/share/freezeout & pid=$!
 
 # Wait for server startup.
 sleep 1

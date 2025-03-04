@@ -13,45 +13,41 @@ docker build -f docker/Dockerfile -t freezeout:0.1.0 .
 
 ### Run the container
 
-To run the `freezeout` and `nginx` servers you need to know the server host address
-that the client will use to connect to the server, let's say that the address is
-`192.168.178.74`, then to run the servers container run the following command:
+To run the `freezeout` and `nginx` servers you need to know the server host
+address that the client will use to connect to the server, let's say that the
+address is `192.168.178.74`, then from the repository root you can start the
+container using the `run.sh` script:
 
 ```bash
-docker run -e HOST="192.168.178.74" -p 80:80 -p 9871:9871 freezeout:0.1.0
+$ ./docker/run.sh --host 192.168.178.74 --image freezeout:0.1.0 
 ```
 
-The above command maps the ports for the `nginx` and `freezeout`
-servers and sets the host used by all clients.
+### Run the UI client
 
-### Connect the client
-
-If the servers start successfully then use a browser to load and run the client at
-the URL `http://192.168.178.74`.
-
+To run the UI client use a browser to connect to the URL `http://192.168.178.74`
+(note this uses http, connections between the UI client and the game server are
+encrypted using NOISE protocol).
 
 ### Configure number of tables and seats
 
-By default the poker server runs with 10 tables and 3 seats per table,
-to configure the number of tables use the `TABLES` variable:
+By default the poker server runs with 10 tables and 3 seats per table, to
+configure the number of tables you can use the `--tables` option:
 
 ```bash
-docker run -e HOST="192.168.178.74" -e TABLES=20 -p 80:80 -p 9871:9871 freezeout:0.1.0
+$ ./docker/run.sh --host 192.168.178.74 --image freezeout:0.1.0 --tables 30
 ```
 
-To configure the number of seats per table use the `SEATS` variable,
-the number of seats must be a number between 2 and 6:
+The `--seats` option configures the number of seats per table, this can be a
+number between 2 and 6, to run the server for two players games:
 
 ```bash
-docker run -e HOST="192.168.178.74" -e SEATS=2 -p 80:80 -p 9871:9871 freezeout:0.1.0
+$ ./docker/run.sh --host 192.168.178.74 --image freezeout:0.1.0 --seats 2
 ```
 
 ### Configure listening port
 
-To configure the `freezeout` server port use the environment variable
-`PORT` and change the port mapping when running the container, for
-example to use port 9800:
+To `--port` option configures the `freezeout` server port, to use port 9800:
 
 ```bash
-docker run -e HOST="192.168.178.74" -p 80:80 -e PORT=9800 -p 9800:9800 freezeout:0.1.0
+$ ./docker/run.sh --host 192.168.178.74 --image freezeout:0.1.0 --port 9800
 ```

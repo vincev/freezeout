@@ -40,16 +40,14 @@ pub struct Config {
     pub tables: usize,
     /// The number of seats per table.
     pub seats: usize,
-    /// Server identity keypair path.
-    pub keypair_path: Option<PathBuf>,
-    /// Game database path.
-    pub db_path: Option<PathBuf>,
+    /// Application data path.
+    pub data_path: Option<PathBuf>,
 }
 
 /// Server entry point.
 pub async fn run(config: Config) -> Result<()> {
-    let sk = load_signing_key(&config.keypair_path)?;
-    let db = open_database(&config.db_path)?;
+    let sk = load_signing_key(&config.data_path)?;
+    let db = open_database(&config.data_path)?;
 
     let addr = format!("{}:{}", config.address, config.port);
     info!("Starting server listening on {}", addr);

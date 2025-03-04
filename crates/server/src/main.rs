@@ -19,12 +19,9 @@ struct Cli {
     /// Number of seats per table.
     #[clap(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(2..=6))]
     seats: u8,
-    /// Server identity keypair path.
+    /// Application data path.
     #[clap(long)]
-    keypair_path: Option<PathBuf>,
-    /// Game database path.
-    #[clap(long)]
-    db_path: Option<PathBuf>,
+    data_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -41,8 +38,7 @@ async fn main() {
         port: cli.port,
         tables: cli.tables as usize,
         seats: cli.seats as usize,
-        keypair_path: cli.keypair_path,
-        db_path: cli.db_path,
+        data_path: cli.data_path,
     };
 
     if let Err(e) = server::run(config).await {

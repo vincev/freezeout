@@ -42,6 +42,10 @@ if [ -z "$host" ]; then
   usage
 fi
 
+# Create docker volume for storing the key and the players database.
+docker volume create freezeout-storage
+
+# Run container.
 docker run \
        -e HOST="$host" \
        -e TABLES="$tables" \
@@ -49,4 +53,5 @@ docker run \
        -e PORT="$port" \
        -p 80:80 \
        -p $port:$port \
+       -v freezeout-storage:/usr/local/share/freezeout \
        $image
