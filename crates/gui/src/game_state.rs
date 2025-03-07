@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Game view.
-use log::info;
-
 use freezeout_core::{
     crypto::PeerId,
     message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
@@ -114,12 +112,6 @@ impl GameState {
                     app.nickname().to_string(),
                     *chips,
                 ));
-
-                info!(
-                    "Joined table {} {:?}",
-                    table_id,
-                    self.players.last().unwrap()
-                )
             }
             Message::PlayerJoined {
                 player_id,
@@ -128,8 +120,6 @@ impl GameState {
             } => {
                 self.players
                     .push(Player::new(player_id.clone(), nickname.clone(), *chips));
-
-                info!("Added player {:?}", self.players.last().unwrap())
             }
             Message::PlayerLeft(player_id) => {
                 self.players.retain(|p| &p.player_id != player_id);
@@ -186,11 +176,6 @@ impl GameState {
                 assert!(&self.players[0].player_id == app.player_id());
 
                 self.players[0].cards = PlayerCards::Cards(*c1, *c2);
-                info!(
-                    "Player {} received cards {:?}",
-                    app.player_id(),
-                    self.players[0].cards
-                );
             }
             Message::GameUpdate {
                 players,
@@ -209,10 +194,6 @@ impl GameState {
             } => {
                 // Check if the action has been requested for this player.
                 if app.player_id() == player_id {
-                    info!(
-                        "Player {} request action: {} {:?}",
-                        player_id, min_raise, actions
-                    );
                     self.action_request = Some(ActionRequest {
                         actions: actions.clone(),
                         min_raise: *min_raise,
