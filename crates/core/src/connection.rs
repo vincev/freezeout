@@ -13,7 +13,7 @@ use tokio_tungstenite::{
     tungstenite::{Message as WsMessage, protocol::WebSocketConfig},
 };
 
-use freezeout_core::message::SignedMessage;
+use crate::message::SignedMessage;
 
 static NOISE_PARAMS: LazyLock<NoiseParams> =
     LazyLock::new(|| "Noise_NN_25519_ChaChaPoly_BLAKE2s".parse().unwrap());
@@ -147,7 +147,7 @@ pub async fn connect_async(addr: &str) -> Result<EncryptedConnection> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use freezeout_core::{crypto::SigningKey, message::Message};
+    use crate::{crypto::SigningKey, message::Message};
     use tokio::net::TcpListener;
 
     #[tokio::test]

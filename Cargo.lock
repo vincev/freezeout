@@ -1161,10 +1161,15 @@ dependencies = [
  "bip32",
  "blake2",
  "bs58",
+ "bytes",
  "ed25519-dalek",
+ "futures-util",
  "itertools",
  "rand 0.8.5",
  "serde",
+ "snow",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -1193,19 +1198,15 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "anyhow",
- "bytes",
  "clap",
  "directories",
  "env_logger",
  "freezeout-core",
- "futures-util",
  "log",
  "parking_lot",
  "rand 0.8.5",
  "rusqlite",
- "snow",
  "tokio",
- "tokio-tungstenite",
 ]
 
 [[package]]
@@ -1213,6 +1214,17 @@ name = "futures-core"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f29059c0c2090612e8d742178b0580d2dc940c837851ad723096f87af6663e"
+
+[[package]]
+name = "futures-macro"
+version = "0.3.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "162ee34ebcb7c64a8abebc059ce0fee27c2262618d7b60ed8faf72fef13c3650"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "futures-sink"
@@ -1233,6 +1245,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa08315bb612088cc391249efdc3bc77536f16c91f6cf495e6fbe85b20a4a81"
 dependencies = [
  "futures-core",
+ "futures-macro",
  "futures-sink",
  "futures-task",
  "pin-project-lite",
@@ -3028,9 +3041,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.43.0"
+version = "1.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
+checksum = "9975ea0f48b5aa3972bf2d888c238182458437cc2a19374b81b25cdf1023fb3a"
 dependencies = [
  "backtrace",
  "bytes",

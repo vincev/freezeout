@@ -17,13 +17,13 @@ use tokio::{
 };
 
 use freezeout_core::{
+    connection::{self, EncryptedConnection},
     crypto::SigningKey,
     message::{Message, SignedMessage},
     poker::Chips,
 };
 
 use crate::{
-    connection::{self, EncryptedConnection},
     db::Db,
     table::{Table, TableMessage},
     tables_pool::TablesPool,

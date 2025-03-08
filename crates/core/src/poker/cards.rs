@@ -240,8 +240,8 @@ mod tests {
         while !deck.is_empty() {
             let card = deck.deal();
             assert_eq!(card.id() & 0xFF, PRIMES[card.rank() as usize]);
-            assert_eq!(card.id() >> 8 & 0xF, card.rank() as u32);
-            assert_eq!(card.id() >> 12 & 0xF, card.suit() as u32);
+            assert_eq!((card.id() >> 8) & 0xF, card.rank() as u32);
+            assert_eq!((card.id() >> 12) & 0xF, card.suit() as u32);
             assert_eq!(card.id() >> 16, 1 << (card.rank() as usize));
             cards.insert(card.id());
         }
