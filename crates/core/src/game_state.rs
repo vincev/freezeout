@@ -1,14 +1,12 @@
 // Copyright (C) 2025 Vince Vasta
 // SPDX-License-Identifier: Apache-2.0
 
-//! Game view.
-use freezeout_core::{
+//! Client game state types.
+use crate::{
     crypto::PeerId,
     message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
     poker::{Card, Chips, PlayerCards, TableId},
 };
-
-use crate::App;
 
 /// Game player data.
 #[derive(Debug)]
@@ -72,6 +70,8 @@ pub struct ActionRequest {
 /// This client game state.
 #[derive(Debug)]
 pub struct GameState {
+    player_id: PeerId,
+    nickname: String,
     table_id: TableId,
     seats: usize,
     game_started: bool,
@@ -81,9 +81,12 @@ pub struct GameState {
     pot: Chips,
 }
 
-impl Default for GameState {
-    fn default() -> Self {
+impl GameState {
+    /// Creates a new ClientState for the local player.
+    pub fn new(player_id: PeerId, nickname: String) -> Self {
         Self {
+            player_id,
+            nickname,
             table_id: TableId::NO_TABLE,
             seats: 0,
             game_started: false,
@@ -93,11 +96,9 @@ impl Default for GameState {
             pot: Chips::ZERO,
         }
     }
-}
 
-impl GameState {
     /// Handle an incoming server message.
-    pub fn handle_message(&mut self, msg: SignedMessage, app: &mut App) {
+    pub fn handle_message(&mut self, msg: SignedMessage) {
         match msg.message() {
             Message::TableJoined {
                 table_id,
@@ -108,8 +109,8 @@ impl GameState {
                 self.seats = *seats as usize;
                 // Add this player as the first player in the players list.
                 self.players.push(Player::new(
-                    app.player_id().clone(),
-                    app.nickname().to_string(),
+                    self.player_id.clone(),
+                    self.nickname.clone(),
                     *chips,
                 ));
             }
@@ -139,7 +140,7 @@ impl GameState {
                 let pos = self
                     .players
                     .iter()
-                    .position(|p| &p.player_id == app.player_id())
+                    .position(|p| p.player_id == self.player_id)
                     .expect("Local player not found");
                 self.players.rotate_left(pos);
 
@@ -173,7 +174,7 @@ impl GameState {
             Message::DealCards(c1, c2) => {
                 // This client player should be in first position.
                 assert!(!self.players.is_empty());
-                assert!(&self.players[0].player_id == app.player_id());
+                assert_eq!(self.players[0].player_id, self.player_id);
 
                 self.players[0].cards = PlayerCards::Cards(*c1, *c2);
             }
@@ -193,7 +194,7 @@ impl GameState {
                 actions,
             } => {
                 // Check if the action has been requested for this player.
-                if app.player_id() == player_id {
+                if &self.player_id == player_id {
                     self.action_request = Some(ActionRequest {
                         actions: actions.clone(),
                         min_raise: *min_raise,
@@ -208,6 +209,11 @@ impl GameState {
     /// Returns the requested player action if any.
     pub fn action_request(&self) -> Option<&ActionRequest> {
         self.action_request.as_ref()
+    }
+
+    /// Reset the action request.
+    pub fn reset_action_request(&mut self) {
+        self.action_request = None;
     }
 
     /// Returns a reference to the players.
@@ -238,14 +244,6 @@ impl GameState {
     /// Checks if the local player is active.
     pub fn is_active(&self) -> bool {
         !self.players.is_empty() && self.players[0].is_active
-    }
-
-    /// Send the action to the server.
-    pub fn send_action(&mut self, action: PlayerAction, amount: Chips, app: &mut App) {
-        let msg = Message::ActionResponse { action, amount };
-
-        app.send_message(msg);
-        self.action_request = None;
     }
 
     fn update_players(&mut self, updates: &[PlayerUpdate]) {

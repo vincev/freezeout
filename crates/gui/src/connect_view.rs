@@ -216,11 +216,7 @@ impl View for ConnectView {
         app: &mut App,
     ) -> Option<Box<dyn View>> {
         if self.server_joined {
-            Some(Box::new(AccountView::new(
-                self.nickname.clone(),
-                self.chips,
-                app,
-            )))
+            Some(Box::new(AccountView::new(self.chips, app)))
         } else {
             None
         }

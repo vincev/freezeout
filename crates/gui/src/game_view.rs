@@ -6,11 +6,12 @@ use eframe::egui::*;
 use log::error;
 
 use freezeout_core::{
+    game_state::{GameState, Player},
     message::{Message, PlayerAction},
     poker::{Chips, PlayerCards},
 };
 
-use crate::{AccountView, App, ConnectView, ConnectionEvent, GameState, Player, Textures, View};
+use crate::{AccountView, App, ConnectView, ConnectionEvent, Textures, View};
 
 /// Connect view.
 pub struct GameView {
@@ -49,7 +50,7 @@ impl View for GameView {
                         self.show_account = Some(*chips);
                     }
 
-                    self.game_state.handle_message(msg, app);
+                    self.game_state.handle_message(msg);
                 }
             }
         }
@@ -79,11 +80,7 @@ impl View for GameView {
         if self.connection_closed {
             Some(Box::new(ConnectView::new(frame.storage(), app)))
         } else if let Some(chips) = self.show_account {
-            Some(Box::new(AccountView::new(
-                app.nickname().to_string(),
-                chips,
-                app,
-            )))
+            Some(Box::new(AccountView::new(chips, app)))
         } else {
             None
         }
@@ -590,8 +587,11 @@ impl GameView {
             self.paint_betting_controls(ui, &rect);
         }
 
-        if let Some((action, chips)) = send_action {
-            self.game_state.send_action(action, chips, app);
+        if let Some((action, amount)) = send_action {
+            let msg = Message::ActionResponse { action, amount };
+            app.send_message(msg);
+
+            self.game_state.reset_action_request();
         }
     }
 

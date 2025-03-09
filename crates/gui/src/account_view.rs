@@ -4,9 +4,9 @@
 //! Connection dialog view.
 use eframe::egui::*;
 
-use freezeout_core::{message::Message, poker::Chips};
+use freezeout_core::{game_state::GameState, message::Message, poker::Chips};
 
-use crate::{App, ConnectView, ConnectionEvent, GameState, GameView, View};
+use crate::{App, ConnectView, ConnectionEvent, GameView, View};
 
 const TEXT_FONT: FontId = FontId::new(16.0, FontFamily::Monospace);
 
@@ -24,11 +24,11 @@ pub struct AccountView {
 
 impl AccountView {
     /// Creates a new connect view.
-    pub fn new(nickname: String, chips: Chips, app: &App) -> Self {
+    pub fn new(chips: Chips, app: &App) -> Self {
         Self {
             player_id: app.player_id().digits(),
-            nickname,
-            game_state: GameState::default(),
+            nickname: app.nickname().to_string(),
+            game_state: GameState::new(app.player_id().clone(), app.nickname().to_string()),
             chips,
             error: String::default(),
             connection_closed: false,
@@ -64,7 +64,7 @@ impl View for AccountView {
                         _ => {}
                     }
 
-                    self.game_state.handle_message(msg, app);
+                    self.game_state.handle_message(msg);
                 }
             }
         }
@@ -124,9 +124,10 @@ impl View for AccountView {
         if self.connection_closed {
             Some(Box::new(ConnectView::new(frame.storage(), app)))
         } else if self.table_joined {
+            let empty_state = GameState::new(app.player_id().clone(), app.nickname().to_string());
             Some(Box::new(GameView::new(
                 ctx,
-                std::mem::take(&mut self.game_state),
+                std::mem::replace(&mut self.game_state, empty_state),
             )))
         } else {
             None
