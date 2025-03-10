@@ -1,0 +1,14 @@
+[package]
+authors = ["Vince Vasta <vince.vasta@gmail.com>"]
+description = "Freezeout Poker CLI."
+edition = "2024"
+license = "Apache-2.0"
+name = "freezeout-cli"
+version = "0.1.0"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+crossterm = "0.28.1"
+freezeout-core = { path = "../core", features = ["connection"] }
+tokio = { workspace = true, features=["full"] }

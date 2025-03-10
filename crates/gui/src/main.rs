@@ -15,7 +15,7 @@ fn main() -> eframe::Result<()> {
         /// The server listening port.
         #[clap(long, short, default_value_t = 9871)]
         port: u16,
-        /// The configuration storge key.
+        /// The configuration storage key.
         #[clap(long, short, default_value = "default")]
         storage: String,
     }
