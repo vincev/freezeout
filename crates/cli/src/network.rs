@@ -5,11 +5,15 @@
 use anyhow::{Result, anyhow};
 use tokio::sync::{mpsc, oneshot};
 
-use freezeout_core::{connection, message::SignedMessage};
+use freezeout_core::{
+    connection,
+    crypto::{PeerId, SigningKey},
+    message::{Message, SignedMessage},
+};
 
 /// A network event.
 #[derive(Debug)]
-pub enum Event {
+enum Event {
     /// An incoming message.
     Message(SignedMessage),
     /// Connection has closed.
@@ -32,8 +36,8 @@ enum Command {
     },
     /// Sends a message to the server.
     Send {
-        /// The signed message.
-        msg: SignedMessage,
+        /// The message payload.
+        msg: Message,
         /// The command result.
         result: oneshot::Sender<Result<()>>,
     },
@@ -45,23 +49,21 @@ pub struct Network {
     events_rx: mpsc::Receiver<Event>,
     shutdown_tx: mpsc::Sender<()>,
     shutdown_complete_rx: mpsc::Receiver<()>,
-}
-
-impl Default for Network {
-    fn default() -> Self {
-        Self::new()
-    }
+    player_id: PeerId,
 }
 
 impl Network {
     /// Create a new network connection.
-    pub fn new() -> Self {
+    pub fn new(sk: SigningKey) -> Self {
         let (commands_tx, commands_rx) = mpsc::channel(64);
         let (events_tx, events_rx) = mpsc::channel(64);
         let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
         let (_shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(64);
 
+        let player_id = sk.verifying_key().peer_id();
+
         let mut task = NetworkTask {
+            sk,
             commands_rx,
             events_tx,
             shutdown_rx,
@@ -80,12 +82,22 @@ impl Network {
             events_rx,
             shutdown_tx,
             shutdown_complete_rx,
+            player_id,
         }
     }
 
-    /// Gets network event.
-    pub fn next_event(&mut self) -> Option<Event> {
-        self.events_rx.try_recv().ok()
+    /// Returns the local player id.
+    pub fn player_id(&self) -> PeerId {
+        self.player_id.clone()
+    }
+
+    /// Wait for a message from the network.
+    pub async fn recv(&mut self) -> Result<SignedMessage> {
+        match self.events_rx.recv().await {
+            Some(Event::Message(msg)) => Ok(msg),
+            Some(Event::Error(e)) => Err(anyhow!("Network error: {e}")),
+            Some(Event::ConnectionClosed) | None => Err(anyhow!("Connection closed")),
+        }
     }
 
     /// Stops network service and disconnect.
@@ -110,7 +122,7 @@ impl Network {
     }
 
     /// Sends a message to the client if connected.
-    pub async fn send(&self, msg: SignedMessage) -> Result<()> {
+    pub async fn send(&self, msg: Message) -> Result<()> {
         let (res_tx, res_rx) = oneshot::channel();
 
         self.commands_tx
@@ -125,6 +137,7 @@ impl Network {
 }
 
 struct NetworkTask {
+    sk: SigningKey,
     commands_rx: mpsc::Receiver<Command>,
     events_tx: mpsc::Sender<Event>,
     shutdown_rx: mpsc::Receiver<()>,
@@ -188,12 +201,15 @@ impl NetworkTask {
             };
 
             match branch {
-                Branch::Conn(msg) => println!("Got message: {msg:?}"),
+                Branch::Conn(msg) => {
+                    let _ = self.events_tx.send(Event::Message(msg)).await;
+                }
                 Branch::Command(cmd) => match cmd {
                     Command::Connect { result, .. } => {
                         let _ = result.send(Err(anyhow!("Already connected")));
                     }
                     Command::Send { msg, result } => {
+                        let msg = SignedMessage::new(&self.sk, msg);
                         let res = conn.send(&msg).await;
                         let _ = result.send(res);
                     }
@@ -202,6 +218,7 @@ impl NetworkTask {
         };
 
         conn.close().await;
+        let _ = self.events_tx.send(Event::ConnectionClosed).await;
 
         res
     }
