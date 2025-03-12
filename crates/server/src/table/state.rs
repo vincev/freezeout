@@ -483,7 +483,7 @@ impl State {
     }
 
     fn update_blinds(&mut self) {
-        let multiplier = (1 << (self.hand_count / 4)) as u32;
+        let multiplier = (1 << (self.hand_count / 4).min(4)) as u32;
         if multiplier < 16 {
             self.small_blind = Self::START_GAME_SB * multiplier;
             self.big_blind = Self::START_GAME_BB * multiplier;
@@ -1299,6 +1299,11 @@ mod tests {
 
         // After that we keep them at the same level
         (0..8).for_each(|_| table.state.update_blinds());
+        assert_eq!(table.state.small_blind, State::START_GAME_SB * 12);
+        assert_eq!(table.state.big_blind, State::START_GAME_BB * 12);
+
+        // Test for overflow bug.
+        (0..128).for_each(|_| table.state.update_blinds());
         assert_eq!(table.state.small_blind, State::START_GAME_SB * 12);
         assert_eq!(table.state.big_blind, State::START_GAME_BB * 12);
     }
