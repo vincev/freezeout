@@ -9,6 +9,7 @@ version = "0.1.0"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true }
-crossterm = "0.28.1"
+crossterm = { version = "0.28.1", features = ["event-stream"] }
 freezeout-core = { path = "../core", features = ["connection"] }
+futures-util = { version = "0.3.31" }
 tokio = { workspace = true, features=["full"] }
