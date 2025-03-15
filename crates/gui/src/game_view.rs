@@ -68,6 +68,7 @@ impl View for GameView {
                 self.paint_board(ui, &table_rect, app);
                 self.paint_pot(ui, &table_rect);
                 self.paint_players(ui, &rect, app);
+                self.paint_close_button(ui, &rect, app);
             });
     }
 
@@ -680,6 +681,20 @@ impl GameView {
             if ui.put(btn_rect, btn).clicked() {
                 params.raise_value = params.raise_value.saturating_add(big_blind).min(max_bet);
             }
+        }
+    }
+
+    fn paint_close_button(&self, ui: &mut Ui, rect: &Rect, app: &mut App) {
+        let btn = Button::new(
+            RichText::new("X")
+                .font(Self::TEXT_FONT)
+                .color(Self::TEXT_COLOR),
+        )
+        .fill(Self::BG_COLOR);
+
+        let rect = Rect::from_min_size(rect.left_top() + vec2(0.0, 0.0), vec2(30.0, 30.0));
+        if ui.put(rect.shrink(2.0), btn).clicked() {
+            app.send_message(Message::LeaveTable);
         }
     }
 }

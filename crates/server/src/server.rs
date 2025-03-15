@@ -298,6 +298,11 @@ impl Handler {
                                 .await?;
                         }
                     }
+                    Message::LeaveTable => {
+                        if let Some(table) = &self.table {
+                            table.leave(&player_id).await;
+                        }
+                    }
                     _ => {
                         if let Some(table) = &self.table {
                             table.message(msg).await;
@@ -316,10 +321,6 @@ impl Handler {
                         self.table = None;
 
                         let player = self.db.get_player(player_id.clone()).await?;
-
-                        // Give some time to the UI before transitioning to the
-                        // account dialog.
-                        time::sleep(Duration::from_secs(5)).await;
 
                         // Tell the client to show the account dialog.
                         let msg = Message::ShowAccount {

@@ -210,6 +210,9 @@ impl State {
             let msg = Message::PlayerLeft(player_id.clone());
             self.broadcast(msg).await;
 
+            // Notify the handler this player has left the table.
+            player.send_player_left().await;
+
             if self.players.count_active() < 2 {
                 self.enter_end_hand().await;
                 return;

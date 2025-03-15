@@ -69,6 +69,11 @@ impl Player {
         let _ = self.table_tx.send(TableMessage::Send(msg)).await;
     }
 
+    /// Tell the player connection handle this player has left the table.
+    pub async fn send_player_left(&self) {
+        let _ = self.table_tx.send(TableMessage::PlayerLeft).await;
+    }
+
     /// Updates this player bets to the given chips amount.
     pub fn bet(&mut self, action: PlayerAction, chips: Chips) {
         // How much to bet considering previous bets.

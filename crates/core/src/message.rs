@@ -28,6 +28,8 @@ pub enum Message {
     },
     /// Join a table.
     JoinTable,
+    /// Leave a table.
+    LeaveTable,
     /// Table joined confirmation.
     TableJoined {
         /// The table the player joined.
