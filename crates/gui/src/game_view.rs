@@ -166,7 +166,7 @@ impl GameView {
         if !self.game_state.game_started() {
             let players = self.game_state.players().len();
             let seats = self.game_state.seats();
-            let missing = seats - players;
+            let missing = seats.saturating_sub(players);
 
             let msg = if missing > 1 {
                 format!("Waiting for {missing} players to join")

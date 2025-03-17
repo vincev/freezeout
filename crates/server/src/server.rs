@@ -314,6 +314,12 @@ impl Handler {
                         if let err @ Err(_) = conn.send(&msg).await {
                             break err;
                         }
+
+                        // Wait after sending EndHand message so that the client has
+                        // some time to check hand results.
+                        if matches!(msg.message(), Message::EndHand { .. }) {
+                            time::sleep(Duration::from_secs(5)).await;
+                        }
                     }
                     TableMessage::PlayerLeft => {
                         // If a player leaves the table reset the table and send

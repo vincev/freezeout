@@ -74,13 +74,11 @@ pub struct State {
     min_raise: Chips,
     pots: Vec<Pot>,
     board: Vec<Card>,
-    end_hand_timer: Option<Instant>,
     rng: StdRng,
 }
 
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
-    const NEW_HAND_TIMEOUT: Duration = Duration::from_secs(5);
     const START_GAME_SB: Chips = Chips::new(10_000);
     const START_GAME_BB: Chips = Chips::new(20_000);
 
@@ -112,7 +110,6 @@ impl State {
             min_raise: Chips::ZERO,
             pots: vec![Pot::default()],
             board: Vec::default(),
-            end_hand_timer: None,
             rng,
         }
     }
@@ -257,13 +254,6 @@ impl State {
     }
 
     pub async fn tick(&mut self) {
-        if let Some(dt) = self.end_hand_timer {
-            if dt.elapsed() >= Self::NEW_HAND_TIMEOUT {
-                self.end_hand_timer = None;
-                self.end_hand_timer_action().await;
-            }
-        }
-
         // Check if there is any player with an active timer.
         if self.players.iter().any(|p| p.action_timer.is_some()) {
             let player = self
@@ -433,30 +423,25 @@ impl State {
         self.players.end_hand();
         self.broadcast(Message::EndHand { payoffs: winners }).await;
 
-        // End game or set timer to start new hand.
+        // End game if only player has chips or move to next hand.
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
         } else {
-            // Set timer for starting a new hand.
-            self.end_hand_timer = Some(Instant::now());
-        }
-    }
+            // All players that run out of chips must leave the table before the
+            // start of a new hand.
+            for player in self.players.iter() {
+                if player.chips == Chips::ZERO {
+                    // Notify the client that this player has left the table.
+                    let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
 
-    async fn end_hand_timer_action(&mut self) {
-        // All players that run out of chips must leave the table before the
-        // start of a new hand.
-        for player in self.players.iter() {
-            if player.chips == Chips::ZERO {
-                // Notify the client that this player has left the table.
-                let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
-
-                let msg = Message::PlayerLeft(player.player_id.clone());
-                self.broadcast(msg).await;
+                    let msg = Message::PlayerLeft(player.player_id.clone());
+                    self.broadcast(msg).await;
+                }
             }
-        }
 
-        self.players.remove_with_no_chips();
-        self.enter_start_hand().await;
+            self.players.remove_with_no_chips();
+            self.enter_start_hand().await;
+        }
     }
 
     async fn enter_end_game(&mut self) {
@@ -1112,6 +1097,8 @@ mod tests {
         table.test_start_game().await;
         table.test_start_hand().await;
 
+        let bb_player_id = table.state.players.player(1).player_id.clone();
+
         // First player folds.
         table.fold().await;
 
@@ -1141,7 +1128,7 @@ mod tests {
             // Players get a EndHand message with the BB as winner.
             assert_message!(p, Message::EndHand { payoffs }, || {
                 let payoff = &payoffs[0];
-                assert_eq!(payoff.player_id, table.state.players.player(1).player_id,);
+                assert_eq!(payoff.player_id, bb_player_id);
 
                 // Winner wins blinds.
                 assert_eq!(
