@@ -185,7 +185,6 @@ struct Handler {
 }
 
 impl Handler {
-    const JOIN_SERVER_CHIPS: Chips = Chips::new(3_000_000);
     const JOIN_TABLE_CHIPS: Chips = Chips::new(1_000_000);
 
     /// Handle connection messages.
@@ -215,7 +214,7 @@ impl Handler {
             Message::JoinServer { nickname } => {
                 let player = self
                     .db
-                    .join_server(msg.sender(), nickname, Self::JOIN_SERVER_CHIPS)
+                    .join_server(msg.sender(), nickname, Self::JOIN_TABLE_CHIPS)
                     .await?;
 
                 // Notify client with the player account.
@@ -326,7 +325,14 @@ impl Handler {
                         // updated player account information to the client.
                         self.table = None;
 
-                        let player = self.db.get_player(player_id.clone()).await?;
+                        let mut player = self.db.get_player(player_id.clone()).await?;
+
+                        // For now refill player to be able to join a table.
+                        if player.chips < Self::JOIN_TABLE_CHIPS {
+                            let refill = Self::JOIN_TABLE_CHIPS - player.chips;
+                            self.db.pay_to_player(player_id.clone(), refill).await?;
+                            player.chips = Self::JOIN_TABLE_CHIPS;
+                        }
 
                         // Tell the client to show the account dialog.
                         let msg = Message::ShowAccount {
