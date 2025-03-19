@@ -155,7 +155,7 @@ impl GameState {
                     player.winning_cards.clear();
                 }
             }
-            Message::EndHand { payoffs } => {
+            Message::EndHand { payoffs, .. } => {
                 self.action_request = None;
                 self.pot = Chips::ZERO;
 

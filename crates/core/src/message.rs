@@ -65,6 +65,10 @@ pub enum Message {
     EndHand {
         /// List of payoffs for the hand.
         payoffs: Vec<HandPayoff>,
+        /// The board cards.
+        board: Vec<Card>,
+        /// Players cards.
+        cards: Vec<(PeerId, PlayerCards)>,
     },
     /// Deal cards to a player.
     DealCards(Card, Card),

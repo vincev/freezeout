@@ -421,7 +421,16 @@ impl State {
 
         // Update players and broadcast update to all players.
         self.players.end_hand();
-        self.broadcast(Message::EndHand { payoffs: winners }).await;
+        self.broadcast(Message::EndHand {
+            payoffs: winners,
+            board: self.board.clone(),
+            cards: self
+                .players
+                .iter()
+                .map(|p| (p.player_id.clone(), p.public_cards))
+                .collect(),
+        })
+        .await;
 
         // End game if only player has chips or move to next hand.
         if self.players.count_with_chips() < 2 {
@@ -1081,7 +1090,7 @@ mod tests {
             });
 
             // All players get a EndHand message with winner.
-            assert_message!(p, Message::EndHand { payoffs }, || {
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
                 // Only one payoff
                 assert_eq!(payoffs.len(), 1);
 
@@ -1126,7 +1135,7 @@ mod tests {
             });
 
             // Players get a EndHand message with the BB as winner.
-            assert_message!(p, Message::EndHand { payoffs }, || {
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
                 let payoff = &payoffs[0];
                 assert_eq!(payoff.player_id, bb_player_id);
 
@@ -1189,7 +1198,7 @@ mod tests {
             assert_message!(p, Message::GameUpdate { .. });
 
             // All players get a EndHand message with winner.
-            assert_message!(p, Message::EndHand { payoffs }, || {
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
                 // We should have 3 payoffs, one player went all in with 100_000
                 // another went all in for 300_000 and another for 500_000.
 
@@ -1253,7 +1262,7 @@ mod tests {
             // Game update with showdown.
             assert_message!(p, Message::GameUpdate { .. });
 
-            assert_message!(p, Message::EndHand { payoffs }, || {
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
                 // We should have 2 payoffs, with equal amount as two players have
                 // the same cards value (7S, 9D) and (7D, 9H)
                 assert_eq!(payoffs.len(), 2);
