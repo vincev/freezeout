@@ -50,6 +50,10 @@ impl View for GameView {
                         self.show_account = Some(*chips);
                     }
 
+                    if let Message::StartHand = msg.message() {
+                        self.bet_params = None;
+                    }
+
                     self.game_state.handle_message(msg);
                 }
             }
@@ -558,28 +562,44 @@ impl GameView {
                 )
                 .fill(Self::BG_COLOR);
 
-                if ui.put(btn_rect.shrink(2.0), btn).clicked() {
-                    match action {
-                        PlayerAction::Fold | PlayerAction::Check | PlayerAction::Call => {
+                let clicked = ui.put(btn_rect.shrink(2.0), btn).clicked();
+                match action {
+                    PlayerAction::Call | PlayerAction::Check => {
+                        if ui.input(|i| i.key_pressed(Key::C)) || clicked {
                             send_action = Some((*action, Chips::ZERO));
                             self.bet_params = None;
                             break;
                         }
-                        PlayerAction::Bet | PlayerAction::Raise => {
+                    }
+                    PlayerAction::Fold => {
+                        if ui.input(|i| i.key_pressed(Key::F)) || clicked {
+                            send_action = Some((*action, Chips::ZERO));
+                            self.bet_params = None;
+                            break;
+                        }
+                    }
+                    PlayerAction::Bet | PlayerAction::Raise => {
+                        if ui.input(|i| i.key_pressed(Key::Enter)) || clicked {
                             if let Some(params) = &self.bet_params {
                                 send_action = Some((*action, params.raise_value.into()));
                                 self.bet_params = None;
                                 break;
-                            } else {
-                                self.bet_params = Some(BetParams {
-                                    min_raise: req.min_raise.into(),
-                                    big_blind: req.big_blind.into(),
-                                    raise_value: req.min_raise.into(),
-                                });
                             }
                         }
-                        _ => {}
+
+                        if (ui.input(|i| i.key_pressed(Key::B))
+                            || ui.input(|i| i.key_pressed(Key::R))
+                            || clicked)
+                            && self.bet_params.is_none()
+                        {
+                            self.bet_params = Some(BetParams {
+                                min_raise: req.min_raise.into(),
+                                big_blind: req.big_blind.into(),
+                                raise_value: req.min_raise.into(),
+                            });
+                        }
                     }
+                    _ => {}
                 }
 
                 btn_rect = btn_rect.translate(vec2(Self::BUTTON_LX + 10.0, 0.0));
@@ -665,10 +685,22 @@ impl GameView {
                 vec2(rect.width() / 2.0 - 2.0, 20.0),
             );
 
-            if ui.put(btn_rect, btn).clicked() {
+            // Button click, down arrow or left arrow subtracts 1 big blind.
+            if ui.put(btn_rect, btn).clicked()
+                || ui.input(|i| i.key_pressed(Key::ArrowDown))
+                || ui.input(|i| i.key_pressed(Key::ArrowLeft))
+            {
                 params.raise_value = params
                     .raise_value
                     .saturating_sub(big_blind)
+                    .max(params.min_raise);
+            }
+
+            // Page down to subtract 4 big blinds
+            if ui.input(|i| i.key_pressed(Key::PageDown)) {
+                params.raise_value = params
+                    .raise_value
+                    .saturating_sub(big_blind * 4)
                     .max(params.min_raise);
             }
 
@@ -678,8 +710,21 @@ impl GameView {
                 rect.left_top() + vec2(rect.width() / 2.0, ypos),
                 vec2(rect.width() / 2.0, 20.0),
             );
-            if ui.put(btn_rect, btn).clicked() {
+
+            // Button click, up arrow or right arrow adds 1 big blind.
+            if ui.put(btn_rect, btn).clicked()
+                || ui.input(|i| i.key_pressed(Key::ArrowUp))
+                || ui.input(|i| i.key_pressed(Key::ArrowRight))
+            {
                 params.raise_value = params.raise_value.saturating_add(big_blind).min(max_bet);
+            }
+
+            // Page up to add 4 big blinds
+            if ui.input(|i| i.key_pressed(Key::PageUp)) {
+                params.raise_value = params
+                    .raise_value
+                    .saturating_add(big_blind * 4)
+                    .min(max_bet);
             }
         }
     }
