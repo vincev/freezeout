@@ -20,6 +20,7 @@ pub struct GameView {
     error: Option<String>,
     bet_params: Option<BetParams>,
     show_account: Option<Chips>,
+    show_legend: bool,
 }
 
 struct BetParams {
@@ -73,6 +74,7 @@ impl View for GameView {
                 self.paint_pot(ui, &table_rect);
                 self.paint_players(ui, &rect, app);
                 self.paint_close_button(ui, &rect, app);
+                self.paint_legend(ui, &rect);
             });
     }
 
@@ -109,6 +111,7 @@ impl GameView {
             error: None,
             bet_params: None,
             show_account: None,
+            show_legend: false,
         }
     }
 
@@ -740,6 +743,51 @@ impl GameView {
         let rect = Rect::from_min_size(rect.left_top() + vec2(0.0, 0.0), vec2(30.0, 30.0));
         if ui.put(rect.shrink(2.0), btn).clicked() {
             app.send_message(Message::LeaveTable);
+        }
+    }
+
+    fn paint_legend(&mut self, ui: &mut Ui, rect: &Rect) {
+        const LINES: &str = indoc::indoc! {r#"
+            C     Call/Check
+            F     Fold
+            R     Raise
+            B     Bet
+            Up    +1BB
+            Dn    -1BB
+            PgUp  +4BB
+            PgDn  -4BB
+            Enter Confirm
+            ?     Show/Hide"#};
+
+        if ui.input(|i| i.key_pressed(Key::Questionmark)) {
+            self.show_legend ^= true;
+        }
+
+        if self.show_legend {
+            let rect = player_rect(rect, &Align2::CENTER_BOTTOM);
+            let rect = rect.shrink(5.0);
+
+            let layout_job = text::LayoutJob::single_section(
+                LINES.to_string(),
+                TextFormat {
+                    font_id: FontId::new(13.0, FontFamily::Monospace),
+                    // extra_letter_spacing: 1.0,
+                    color: Self::TEXT_COLOR,
+                    ..Default::default()
+                },
+            );
+
+            let galley = ui.painter().layout_job(layout_job);
+            let min_pos = rect.left_top() - vec2(galley.size().x + 20.0, 0.0);
+
+            // Paint peer id rect.
+            let rect = Rect::from_min_size(min_pos, galley.rect.size());
+
+            let bg_rect = rect.expand(5.0);
+            paint_border(ui, &bg_rect);
+
+            let text_pos = rect.left_top();
+            ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
         }
     }
 }

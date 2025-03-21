@@ -12,6 +12,7 @@ anyhow = { workspace = true }
 ewebsock = "0.8.0"
 freezeout-core = { path = "../core" }
 image = { version = "0.25.5", default-features = false, features = ["png"] }
+indoc = "2"
 log = { workspace = true }
 serde = { workspace = true }
 snow = { workspace = true }
