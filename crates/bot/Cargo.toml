@@ -1,0 +1,16 @@
+[package]
+authors = ["Vince Vasta <vince.vasta@gmail.com>"]
+description = "Freezeout Poker Bot."
+edition = "2024"
+license = "Apache-2.0"
+name = "freezeout-bot"
+version = "0.1.0"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+freezeout-core = { path = "../core", features = ["connection"] }
+log = { workspace = true }
+rand = { workspace = true }
+tokio = { workspace = true, features=["full"] }

@@ -12,16 +12,20 @@ pub mod network;
 pub mod terminal;
 
 #[derive(Debug, Parser)]
+#[command(disable_help_flag = true)]
 struct Cli {
     /// This client nickname.
     #[clap(long, short)]
     nickname: String,
     /// The server listening address.
     #[clap(long, short, default_value = "127.0.0.1")]
-    address: String,
+    host: String,
     /// The server listening port.
     #[clap(long, short, default_value_t = 9871)]
     port: u16,
+    /// Help long flag.
+    #[clap(long, action = clap::ArgAction::HelpLong)]
+    help: Option<bool>,
 }
 
 #[tokio::main]
@@ -30,7 +34,7 @@ async fn main() -> Result<()> {
 
     // Connect to the server before starting the terminal.
     let mut net = network::Network::new(SigningKey::default());
-    net.connect(&cli.address, cli.port).await?;
+    net.connect(&cli.host, cli.port).await?;
 
     // Request to join server with the given nickname.
     net.send(Message::JoinServer {
