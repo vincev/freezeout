@@ -67,6 +67,32 @@ pub struct ActionRequest {
     pub big_blind: Chips,
 }
 
+impl ActionRequest {
+    /// Check if a call action is in the request.
+    pub fn can_call(&self) -> bool {
+        self.check_action(PlayerAction::Call)
+    }
+
+    /// Check if a check action is in the request.
+    pub fn can_check(&self) -> bool {
+        self.check_action(PlayerAction::Check)
+    }
+
+    /// Check if a bet action is in the request.
+    pub fn can_bet(&self) -> bool {
+        self.check_action(PlayerAction::Bet)
+    }
+
+    /// Check if a raise action is in the request.
+    pub fn can_raise(&self) -> bool {
+        self.check_action(PlayerAction::Raise)
+    }
+
+    fn check_action(&self, action: PlayerAction) -> bool {
+        self.actions.iter().any(|a| a == &action)
+    }
+}
+
 /// This client game state.
 #[derive(Debug)]
 pub struct GameState {

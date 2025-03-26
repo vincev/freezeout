@@ -125,7 +125,7 @@ pub struct PlayerUpdate {
 }
 
 /// A Player action.
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum PlayerAction {
     /// No action.
     None,
