@@ -98,6 +98,7 @@ impl ActionRequest {
 pub struct GameState {
     player_id: PeerId,
     nickname: String,
+    server_key: String,
     table_id: TableId,
     seats: usize,
     game_started: bool,
@@ -114,6 +115,7 @@ impl GameState {
             player_id,
             nickname,
             table_id: TableId::NO_TABLE,
+            server_key: String::default(),
             seats: 0,
             game_started: false,
             players: Vec::default(),
@@ -133,6 +135,8 @@ impl GameState {
             } => {
                 self.table_id = *table_id;
                 self.seats = *seats as usize;
+                self.server_key = msg.sender().digits();
+
                 // Add this player as the first player in the players list.
                 self.players.push(Player::new(
                     self.player_id.clone(),
@@ -240,6 +244,11 @@ impl GameState {
     /// Reset the action request.
     pub fn reset_action_request(&mut self) {
         self.action_request = None;
+    }
+
+    /// Returns the server key.
+    pub fn server_key(&self) -> &str {
+        &self.server_key
     }
 
     /// Returns a reference to the players.

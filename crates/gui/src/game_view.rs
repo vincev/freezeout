@@ -75,6 +75,7 @@ impl View for GameView {
                 self.paint_players(ui, &rect, app);
                 self.paint_close_button(ui, &rect, app);
                 self.paint_help_button(ui, &rect);
+                self.paint_server_key(ui, &rect);
                 self.paint_legend(ui, &rect);
             });
     }
@@ -99,8 +100,9 @@ impl GameView {
     const TEXT_COLOR: Color32 = Color32::from_rgb(20, 150, 20);
     const TEXT_FONT: FontId = FontId::new(15.0, FontFamily::Monospace);
     const BG_COLOR: Color32 = Color32::from_gray(20);
-    const BUTTON_LX: f32 = 81.0;
-    const BUTTON_LY: f32 = 35.0;
+    const ACTION_BUTTON_LX: f32 = 81.0;
+    const ACTION_BUTTON_LY: f32 = 35.0;
+    const SMALL_BUTTON_SZ: Vec2 = vec2(30.0, 30.0);
 
     /// Creates a new [GameView].
     pub fn new(ctx: &Context, game_state: GameState) -> Self {
@@ -446,7 +448,7 @@ impl GameView {
 
             let cards_rect = Rect::from_min_size(
                 pos2(x_pos, y_pos),
-                vec2(Self::BUTTON_LX * 2.0 + 10.0, IMAGE_LY),
+                vec2(Self::ACTION_BUTTON_LX * 2.0 + 10.0, IMAGE_LY),
             );
 
             paint_border(ui, &cards_rect);
@@ -544,7 +546,7 @@ impl GameView {
 
             let mut btn_rect = Rect::from_min_size(
                 rect.left_top() + vec2(0.0, 130.0),
-                vec2(Self::BUTTON_LX, Self::BUTTON_LY),
+                vec2(Self::ACTION_BUTTON_LX, Self::ACTION_BUTTON_LY),
             );
 
             for action in &req.actions {
@@ -606,7 +608,7 @@ impl GameView {
                     _ => {}
                 }
 
-                btn_rect = btn_rect.translate(vec2(Self::BUTTON_LX + 10.0, 0.0));
+                btn_rect = btn_rect.translate(vec2(Self::ACTION_BUTTON_LX + 10.0, 0.0));
             }
 
             self.paint_betting_controls(ui, &rect);
@@ -626,7 +628,7 @@ impl GameView {
         if let Some(params) = self.bet_params.as_mut() {
             let rect = Rect::from_min_size(
                 rect.left_top() + vec2(182.0, 0.0),
-                vec2(Self::BUTTON_LX, 120.0),
+                vec2(Self::ACTION_BUTTON_LX, 120.0),
             );
 
             paint_border(ui, &rect);
@@ -741,8 +743,8 @@ impl GameView {
         )
         .fill(Self::BG_COLOR);
 
-        let rect = Rect::from_min_size(rect.left_top(), vec2(30.0, 30.0));
-        if ui.put(rect.shrink(2.0), btn).clicked() {
+        let rect = Rect::from_min_size(rect.left_top(), Self::SMALL_BUTTON_SZ);
+        if ui.put(rect, btn).clicked() {
             app.send_message(Message::LeaveTable);
         }
     }
@@ -755,8 +757,11 @@ impl GameView {
         )
         .fill(Self::BG_COLOR);
 
-        let rect = Rect::from_min_size(rect.right_top() - vec2(30.0, 0.0), vec2(30.0, 30.0));
-        if ui.put(rect.shrink(2.0), btn).clicked() {
+        let rect = Rect::from_min_size(
+            rect.right_top() - vec2(Self::SMALL_BUTTON_SZ.x, 0.0),
+            Self::SMALL_BUTTON_SZ,
+        );
+        if ui.put(rect, btn).clicked() {
             self.show_legend ^= true;
         }
     }
@@ -786,7 +791,6 @@ impl GameView {
                 LINES.to_string(),
                 TextFormat {
                     font_id: FontId::new(13.0, FontFamily::Monospace),
-                    // extra_letter_spacing: 1.0,
                     color: Self::TEXT_COLOR,
                     ..Default::default()
                 },
@@ -804,6 +808,38 @@ impl GameView {
             let text_pos = rect.left_top();
             ui.painter().galley(text_pos, galley, Color32::DARK_GRAY);
         }
+    }
+
+    fn paint_server_key(&self, ui: &mut Ui, rect: &Rect) {
+        let layout_job = text::LayoutJob::single_section(
+            format!("Server: {}", self.game_state.server_key()),
+            TextFormat {
+                font_id: Self::TEXT_FONT,
+                color: Self::TEXT_COLOR,
+                ..Default::default()
+            },
+        );
+
+        let galley = ui.painter().layout_job(layout_job);
+
+        const BORDER: f32 = 4.0;
+        let text_size = galley.rect.size() + Vec2::splat(BORDER * 2.0);
+        let text_pos = rect.left_bottom() + vec2(0.0, -text_size.y);
+        let rect = Rect::from_min_size(text_pos, text_size);
+
+        ui.painter().rect(
+            rect,
+            CornerRadius {
+                ne: 5,
+                ..Default::default()
+            },
+            Color32::from_gray(20),
+            Stroke::NONE,
+            StrokeKind::Inside,
+        );
+
+        ui.painter()
+            .galley(text_pos + Vec2::splat(BORDER), galley, Color32::DARK_GRAY);
     }
 }
 
