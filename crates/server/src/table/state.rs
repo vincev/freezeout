@@ -763,11 +763,14 @@ impl State {
                 actions.push(PlayerAction::Call);
             }
 
-            if self.last_bet == Chips::ZERO {
+            if self.last_bet == Chips::ZERO && player.chips > Chips::ZERO {
                 actions.push(PlayerAction::Bet);
             }
 
-            if player.chips + player.bet > self.last_bet && self.last_bet > Chips::ZERO {
+            if player.chips + player.bet > self.last_bet
+                && self.last_bet > Chips::ZERO
+                && player.chips > Chips::ZERO
+            {
                 actions.push(PlayerAction::Raise);
             }
 
