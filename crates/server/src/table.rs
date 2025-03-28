@@ -39,6 +39,8 @@ pub enum TableMessage {
     Send(SignedMessage),
     /// Tell the client to leave the table.
     PlayerLeft,
+    /// Tell the client to introduce a delay between messages.
+    Throttle(Duration),
     /// Close a client connection.
     Close,
 }

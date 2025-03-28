@@ -3,7 +3,10 @@
 
 //! Table player types.
 use rand::prelude::*;
-use std::{cmp::Ordering, time::Instant};
+use std::{
+    cmp::Ordering,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc;
 
 use freezeout_core::{
@@ -65,13 +68,18 @@ impl Player {
     }
 
     /// Send a message to this player connection.
-    pub async fn send(&self, msg: SignedMessage) {
+    pub async fn send_message(&self, msg: SignedMessage) {
         let _ = self.table_tx.send(TableMessage::Send(msg)).await;
     }
 
     /// Tell the player connection handle this player has left the table.
     pub async fn send_player_left(&self) {
         let _ = self.table_tx.send(TableMessage::PlayerLeft).await;
+    }
+
+    /// Send a throttle message to this player connection.
+    pub async fn send_throttle(&self, dt: Duration) {
+        let _ = self.table_tx.send(TableMessage::Throttle(dt)).await;
     }
 
     /// Updates this player bets to the given chips amount.

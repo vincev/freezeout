@@ -179,7 +179,7 @@ impl State {
             nickname: nickname.to_string(),
             chips: join_player.chips,
         };
-        self.broadcast(msg).await;
+        self.broadcast_message(msg).await;
 
         // Add new player to the table.
         self.players.join(join_player);
@@ -205,7 +205,7 @@ impl State {
 
             // Tell the other players this player has left.
             let msg = Message::PlayerLeft(player_id.clone());
-            self.broadcast(msg).await;
+            self.broadcast_message(msg).await;
 
             // Notify the handler this player has left the table.
             player.send_player_left().await;
@@ -291,7 +291,7 @@ impl State {
 
         // Tell players to update their seats order.
         let seats = self.players.iter().map(|p| p.player_id.clone()).collect();
-        self.broadcast(Message::StartGame(seats)).await;
+        self.broadcast_message(Message::StartGame(seats)).await;
 
         self.enter_start_hand().await;
     }
@@ -334,7 +334,7 @@ impl State {
         self.pots = vec![Pot::default()];
 
         // Tell clients to prepare for a new hand.
-        self.broadcast(Message::StartHand).await;
+        self.broadcast_message(Message::StartHand).await;
 
         // Deal cards to each player.
         for player in self.players.iter_mut() {
@@ -362,7 +362,7 @@ impl State {
             if let PlayerCards::Cards(c1, c2) = player.hole_cards {
                 let msg = Message::DealCards(c1, c2);
                 let smsg = SignedMessage::new(&self.sk, msg);
-                player.send(smsg).await;
+                player.send_message(smsg).await;
             }
         }
 
@@ -416,12 +416,14 @@ impl State {
 
         self.update_pots();
         self.broadcast_game_update().await;
+        // Give time to the UI to look at the updated pot and board.
+        self.broadcast_throttle(Duration::from_millis(1500)).await;
 
         let winners = self.pay_bets();
 
         // Update players and broadcast update to all players.
         self.players.end_hand();
-        self.broadcast(Message::EndHand {
+        self.broadcast_message(Message::EndHand {
             payoffs: winners,
             board: self.board.clone(),
             cards: self
@@ -431,6 +433,9 @@ impl State {
                 .collect(),
         })
         .await;
+
+        // Give time to the UI to look at winning hands and chips.
+        self.broadcast_throttle(Duration::from_millis(4500)).await;
 
         // End game if only player has chips or move to next hand.
         if self.players.count_with_chips() < 2 {
@@ -444,7 +449,7 @@ impl State {
                     let _ = player.table_tx.send(TableMessage::PlayerLeft).await;
 
                     let msg = Message::PlayerLeft(player.player_id.clone());
-                    self.broadcast(msg).await;
+                    self.broadcast_message(msg).await;
                 }
             }
 
@@ -646,6 +651,9 @@ impl State {
     async fn start_round(&mut self) {
         self.update_pots();
 
+        // Give some time to watch last action and pots.
+        self.broadcast_throttle(Duration::from_millis(1000)).await;
+
         for player in self.players.iter_mut() {
             player.bet = Chips::ZERO;
             player.action = PlayerAction::None;
@@ -738,7 +746,7 @@ impl State {
         };
         let smsg = SignedMessage::new(&self.sk, msg);
         for player in self.players.iter() {
-            player.send(smsg.clone()).await;
+            player.send_message(smsg.clone()).await;
         }
     }
 
@@ -772,15 +780,22 @@ impl State {
                 actions,
             };
 
-            self.broadcast(msg).await;
+            self.broadcast_message(msg).await;
         }
     }
 
     /// Broadcast a message to all players at the table.
-    async fn broadcast(&self, msg: Message) {
+    async fn broadcast_message(&self, msg: Message) {
         let smsg = SignedMessage::new(&self.sk, msg);
         for player in self.players.iter() {
-            player.send(smsg.clone()).await;
+            player.send_message(smsg.clone()).await;
+        }
+    }
+
+    /// Broadcast a throttle message to all players at the table.
+    async fn broadcast_throttle(&self, dt: Duration) {
+        for player in self.players.iter() {
+            player.send_throttle(dt).await;
         }
     }
 }
@@ -826,23 +841,36 @@ mod tests {
 
     macro_rules! assert_message {
         ($player:expr, $pattern:pat $(if $guard:expr)?) => {
-            let msg = $player.rx().expect("No message found");
-            match msg {
-                TableMessage::Send(msg) => match msg.message() {
-                    $pattern $(if $guard)? => true,
-                    msg => panic!("Unexpected message {msg:?}"),
+            loop {
+                let msg = $player.rx().expect("No message found");
+                match msg {
+                    TableMessage::Send(msg) => match msg.message() {
+                        $pattern $(if $guard)? => break,
+                        msg => panic!("Unexpected message {msg:?}"),
+                    },
+                    TableMessage::Throttle(_) => {
+                        // Ignore throttle messages while testing.
+                    },
+                    msg => panic!("Unexpected table message {msg:?}"),
                 }
-                msg => panic!("Unexpected table message {msg:?}"),
             }
         };
         ($player:expr, $pattern:pat, $closure:expr) => {
-            let msg = $player.rx().expect("No message found");
-            match msg {
-                TableMessage::Send(msg) => match msg.message() {
-                    $pattern => $closure(),
-                    msg => panic!("Unexpected message {msg:?}"),
+            loop {
+                let msg = $player.rx().expect("No message found");
+                match msg {
+                    TableMessage::Send(msg) => match msg.message() {
+                        $pattern => {
+                            $closure();
+                            break
+                        },
+                        msg => panic!("Unexpected message {msg:?}"),
+                    }
+                    TableMessage::Throttle(_) => {
+                        // Ignore throttle messages while testing.
+                    },
+                    msg => panic!("Unexpected table message {msg:?}"),
                 }
-                msg => panic!("Unexpected table message {msg:?}"),
             }
         };
 }
