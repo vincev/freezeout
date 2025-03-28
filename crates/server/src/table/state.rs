@@ -843,40 +843,25 @@ mod tests {
     }
 
     macro_rules! assert_message {
-        ($player:expr, $pattern:pat $(if $guard:expr)?) => {
-            loop {
-                let msg = $player.rx().expect("No message found");
-                match msg {
-                    TableMessage::Send(msg) => match msg.message() {
-                        $pattern $(if $guard)? => break,
-                        msg => panic!("Unexpected message {msg:?}"),
-                    },
-                    TableMessage::Throttle(_) => {
-                        // Ignore throttle messages while testing.
-                    },
-                    msg => panic!("Unexpected table message {msg:?}"),
-                }
-            }
-        };
-        ($player:expr, $pattern:pat, $closure:expr) => {
+        ($player:expr, $pattern:pat $(, $closure:expr)?) => {
             loop {
                 let msg = $player.rx().expect("No message found");
                 match msg {
                     TableMessage::Send(msg) => match msg.message() {
                         $pattern => {
-                            $closure();
-                            break
-                        },
+                            $($closure();)?
+                            break;
+                        }
                         msg => panic!("Unexpected message {msg:?}"),
-                    }
+                    },
                     TableMessage::Throttle(_) => {
                         // Ignore throttle messages while testing.
-                    },
+                    }
                     msg => panic!("Unexpected table message {msg:?}"),
                 }
             }
         };
-}
+    }
 
     struct TestTable {
         state: State,
@@ -929,7 +914,9 @@ mod tests {
                 for id in &player_ids {
                     // Skip itself.
                     if p.id() != id {
-                        assert_message!(p, Message::PlayerJoined { player_id: p, .. } if p == id);
+                        assert_message!(p, Message::PlayerJoined { player_id, .. }, || {
+                            assert_eq!(player_id, id);
+                        });
                     }
                 }
             }
@@ -938,7 +925,9 @@ mod tests {
             // message with the new seats is sent to each player. Check that shuffled
             // seats id are different from the test players id.
             for p in self.players.iter_mut() {
-                assert_message!(p, Message::StartGame(seats) if seats != &player_ids);
+                assert_message!(p, Message::StartGame(seats), || {
+                    assert_ne!(seats, &player_ids);
+                });
             }
 
             // Sort test players after shuffling.
