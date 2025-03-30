@@ -1069,7 +1069,6 @@ mod tests {
 
         for p in table.players.iter_mut() {
             assert_message!(p, Message::GameUpdate { players, .. }, || {
-                // SB playe calls.
                 assert!(matches!(players[0].action, PlayerAction::Call));
             });
             assert_message!(p, Message::ActionRequest { .. });
@@ -1116,6 +1115,140 @@ mod tests {
 
                 // Winner wins all chips.
                 assert_eq!(payoffs[0].chips, Chips::new(300_000));
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn two_players_one_all_in() {
+        const JOIN_CHIPS: u32 = 100_000;
+        const JOIN_CHIPS_SMALL: u32 = JOIN_CHIPS / 2;
+
+        let mut table = TestTable::new(vec![JOIN_CHIPS_SMALL, JOIN_CHIPS]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // First player to act goes all in, this is the player with fewer chips.
+        table.bet(Chips::new(JOIN_CHIPS_SMALL)).await;
+
+        // All players get a game update with the player action followed by an action
+        // request for the next player to act.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[0].action, PlayerAction::Bet));
+            });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        table.call().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[1].action, PlayerAction::Call));
+            });
+
+            // New round deal flop update.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 3);
+            });
+
+            // Deal turn.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 4);
+            });
+
+            // Deal river.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 5);
+            });
+
+            // Showdown message with all players cards.
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                for p in players {
+                    assert!(matches!(p.cards, PlayerCards::Cards(_, _)));
+                }
+            });
+
+            // All players get a EndHand message with winner.
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
+                // Only one payoff
+                assert_eq!(payoffs.len(), 1);
+                assert_eq!(payoffs[0].chips, Chips::new(100_000));
+            });
+        }
+    }
+
+    #[tokio::test]
+    async fn three_players_one_all_in() {
+        const JOIN_CHIPS: u32 = 100_000;
+        const JOIN_CHIPS_SMALL: u32 = JOIN_CHIPS / 2;
+
+        let mut table = TestTable::new(vec![JOIN_CHIPS, JOIN_CHIPS, JOIN_CHIPS_SMALL]);
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // First player UG goes all in, this is the player with fewer chips.
+        table.bet(Chips::new(JOIN_CHIPS_SMALL)).await;
+
+        // All players get a game update with the player action followed by an action
+        // request for the next player to act.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[2].action, PlayerAction::Bet));
+            });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // SB calls.
+        table.call().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[0].action, PlayerAction::Call));
+            });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // BB calls.
+        table.call().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[1].action, PlayerAction::Call));
+            });
+
+            // New round deal flop update.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 3);
+            });
+
+            // Request action to SB.
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // SB check
+        table.check().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[0].action, PlayerAction::Check));
+            });
+
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
+        // BB bets so we can check that the action goes back to SB as the UG players
+        // is all in.
+        table.bet(table.state.big_blind).await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { players, .. }, || {
+                assert!(matches!(players[1].action, PlayerAction::Bet));
+            });
+
+            // Check action goes back to SB
+            assert_message!(p, Message::ActionRequest { player_id, .. }, || {
+                assert_eq!(player_id, &table.state.players.player(0).player_id);
             });
         }
     }

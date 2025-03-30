@@ -253,10 +253,20 @@ impl PlayersState {
     /// Activate the next player if there is more than one active player.
     pub fn activate_next_player(&mut self) {
         if self.count_active() > 0 && self.active_player.is_some() {
-            loop {
-                let active_player = self.active_player.get_or_insert_default();
-                *active_player = (*active_player + 1) % self.players.len();
-                if self.players[*active_player].is_active {
+            let active_player = self.active_player.take().unwrap();
+
+            // Iterate cyclically starting from the player after the active one.
+            let iter = self
+                .players
+                .iter()
+                .enumerate()
+                .cycle()
+                .skip(active_player + 1)
+                .take(self.players.len() - 1);
+
+            for (pos, p) in iter {
+                if p.is_active && p.chips > Chips::ZERO {
+                    self.active_player = Some(pos);
                     break;
                 }
             }
@@ -297,10 +307,14 @@ impl PlayersState {
     pub fn start_round(&mut self) {
         self.active_player = None;
 
-        for (idx, p) in self.players.iter().enumerate() {
-            if p.chips > Chips::ZERO && p.is_active {
-                self.active_player = Some(idx);
-                return;
+        // Set an active player at the beginning of a round only if there are two or
+        // more player with chips.
+        if self.count_active_with_chips() > 1 {
+            for (idx, p) in self.players.iter().enumerate() {
+                if p.chips > Chips::ZERO && p.is_active {
+                    self.active_player = Some(idx);
+                    return;
+                }
             }
         }
     }
