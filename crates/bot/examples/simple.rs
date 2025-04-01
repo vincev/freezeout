@@ -1,9 +1,10 @@
 // Copyright (C) 2025 Vince Vasta
 // SPDX-License-Identifier: Apache-2.0
 
-//! Freezeout Bot.
+//! A simple example bot strategy.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 use anyhow::Result;
+use clap::Parser;
 use rand::prelude::*;
 
 use freezeout_core::{
@@ -50,7 +51,32 @@ impl Strategy for AlwaysCallOrCheck {
     }
 }
 
+#[derive(Debug, Parser)]
+#[command(disable_help_flag = true)]
+struct Cli {
+    /// Number of clients to run.
+    #[clap(long, short, value_parser = clap::value_parser!(u8).range(1..=5))]
+    clients: u8,
+    /// The server listening address.
+    #[clap(long, short, default_value = "127.0.0.1")]
+    host: String,
+    /// The server listening port.
+    #[clap(long, short, default_value_t = 9871)]
+    port: u16,
+    /// Help long flag.
+    #[clap(long, action = clap::ArgAction::HelpLong)]
+    help: Option<bool>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    freezeout_bot::run(|| AlwaysCallOrCheck).await
+    let cli = Cli::parse();
+
+    let config = freezeout_bot::Config {
+        clients: cli.clients,
+        host: cli.host,
+        port: cli.port,
+    };
+
+    freezeout_bot::run(config, || AlwaysCallOrCheck).await
 }

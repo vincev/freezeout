@@ -4,7 +4,6 @@
 //! Freezeout Bot.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 use anyhow::Result;
-use clap::Parser;
 use log::{error, info};
 
 use tokio::{
@@ -15,27 +14,21 @@ use tokio::{
 mod client;
 pub use client::Strategy;
 
-#[derive(Debug, Parser)]
-#[command(disable_help_flag = true)]
-struct Cli {
+/// Bot clients configuration.
+#[derive(Debug)]
+pub struct Config {
     /// Number of clients to run.
-    #[clap(long, short, value_parser = clap::value_parser!(u8).range(1..=5))]
-    clients: u8,
+    pub clients: u8,
     /// The server listening address.
-    #[clap(long, short, default_value = "127.0.0.1")]
-    host: String,
+    pub host: String,
     /// The server listening port.
-    #[clap(long, short, default_value_t = 9871)]
-    port: u16,
-    /// Help long flag.
-    #[clap(long, action = clap::ArgAction::HelpLong)]
-    help: Option<bool>,
+    pub port: u16,
 }
 
 static NICKNAMES: &[&str] = &["Alice", "Bob", "Carol", "Dave", "Frank", "Mike"];
 
-/// Run players bot clients.
-pub async fn run<F, S>(factory: F) -> Result<()>
+/// Runs clients given a config and a strategy factory called for each client.
+pub async fn run<F, S>(config: Config, factory: F) -> Result<()>
 where
     F: Fn() -> S,
     S: Strategy,
@@ -46,17 +39,15 @@ where
         .format_timestamp_millis()
         .init();
 
-    let cli = Cli::parse();
-
     let (shutdown_broadcast_tx, _) = broadcast::channel(1);
     let (shutdown_complete_tx, mut shutdown_complete_rx) = mpsc::channel(1);
 
-    for idx in 0..cli.clients {
+    for idx in 0..config.clients {
         let mut client = client::Client::new(
             factory(),
             NICKNAMES[idx as usize].to_string(),
-            &cli.host,
-            cli.port,
+            &config.host,
+            config.port,
             shutdown_broadcast_tx.subscribe(),
             shutdown_complete_tx.clone(),
         )
