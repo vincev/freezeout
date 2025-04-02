@@ -18,7 +18,7 @@ use tokio::{
 
 use freezeout_core::{
     connection::{self, EncryptedConnection},
-    crypto::SigningKey,
+    crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
     poker::Chips,
 };
@@ -264,6 +264,9 @@ impl Handler {
             match branch {
                 Branch::Conn(msg) => match msg.message() {
                     Message::JoinTable => {
+                        // For now refill player chips if needed.
+                        self.get_or_refill_chips(&player_id).await?;
+
                         // Pay chips to joins a table.
                         let has_chips = self
                             .db
@@ -319,20 +322,9 @@ impl Handler {
                         // updated player account information to the client.
                         self.table = None;
 
-                        let mut player = self.db.get_player(player_id.clone()).await?;
-
-                        // For now refill player to be able to join a table.
-                        if player.chips < Self::JOIN_TABLE_CHIPS {
-                            let refill = Self::JOIN_TABLE_CHIPS - player.chips;
-                            self.db.pay_to_player(player_id.clone(), refill).await?;
-                            player.chips = Self::JOIN_TABLE_CHIPS;
-                        }
-
                         // Tell the client to show the account dialog.
-                        let msg = Message::ShowAccount {
-                            chips: player.chips,
-                        };
-
+                        let chips = self.get_or_refill_chips(&player_id).await?;
+                        let msg = Message::ShowAccount { chips };
                         conn.send(&SignedMessage::new(&self.sk, msg)).await?;
                     }
                     TableMessage::Throttle(dt) => {
@@ -351,6 +343,19 @@ impl Handler {
         }
 
         res
+    }
+
+    async fn get_or_refill_chips(&mut self, player_id: &PeerId) -> Result<Chips> {
+        let mut player = self.db.get_player(player_id.clone()).await?;
+
+        // For now refill player to be able to join a table.
+        if player.chips < Self::JOIN_TABLE_CHIPS {
+            let refill = Self::JOIN_TABLE_CHIPS - player.chips;
+            self.db.pay_to_player(player_id.clone(), refill).await?;
+            player.chips = Self::JOIN_TABLE_CHIPS;
+        }
+
+        Ok(player.chips)
     }
 }
 

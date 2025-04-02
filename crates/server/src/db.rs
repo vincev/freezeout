@@ -171,17 +171,18 @@ impl Db {
             match res {
                 Ok(chips) => {
                     if chips < amount {
-                        // Not enough chips.
                         return Ok(false);
                     }
+
+                    let remaining_chips = chips - amount;
 
                     // Update chips for this player.
                     conn.execute(
                         "UPDATE players SET
-                           chips = chips - ?2,
+                           chips = ?2,
                            last_update = CURRENT_TIMESTAMP
                          WHERE id = ?1",
-                        params![player_id.digits(), amount.amount(),],
+                        params![player_id.digits(), remaining_chips.amount(),],
                     )?;
 
                     Ok(true)
@@ -241,5 +242,97 @@ impl Db {
             .map_err(anyhow::Error::from)
         })
         .await?
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use freezeout_core::crypto::SigningKey;
+
+    #[tokio::test]
+    async fn join_server() {
+        const JOIN_CHIPS: Chips = Chips::new(1_000_000);
+        const NICKNAME: &str = "alice";
+
+        let db = Db::open_in_memory().unwrap();
+        let player_id = SigningKey::default().verifying_key().peer_id();
+
+        // Test new player.
+        let player = db
+            .join_server(player_id.clone(), NICKNAME, JOIN_CHIPS)
+            .await
+            .unwrap();
+
+        assert_eq!(player.chips, JOIN_CHIPS);
+        assert_eq!(player.nickname, NICKNAME);
+
+        // Update nickname.
+        let player = db
+            .join_server(player_id.clone(), "bob", JOIN_CHIPS)
+            .await
+            .unwrap();
+        assert_eq!(player.nickname, "bob");
+
+        // Update chips.
+        let player = db
+            .join_server(player_id.clone(), NICKNAME, JOIN_CHIPS * 2)
+            .await
+            .unwrap();
+        assert_eq!(player.chips, JOIN_CHIPS * 2);
+
+        // Get the player.
+        let player = db.get_player(player_id).await.unwrap();
+        assert_eq!(player.chips, JOIN_CHIPS * 2);
+        assert_eq!(player.nickname, NICKNAME);
+    }
+
+    #[tokio::test]
+    async fn pay_player() {
+        const JOIN_CHIPS: Chips = Chips::new(1_000_000);
+        const NICKNAME: &str = "alice";
+
+        let db = Db::open_in_memory().unwrap();
+        let player_id = SigningKey::default().verifying_key().peer_id();
+
+        // Create a new player.
+        db.join_server(player_id.clone(), NICKNAME, JOIN_CHIPS)
+            .await
+            .unwrap();
+
+        // Give player 2 x JOIN_CHIPS.
+        db.pay_to_player(player_id.clone(), JOIN_CHIPS * 2)
+            .await
+            .unwrap();
+
+        // Check db has updated.
+        let player = db.get_player(player_id.clone()).await.unwrap();
+        // Player created with JOIN_CHIPS and we payed 2 x JOIN_CHIPS
+        assert_eq!(player.chips, JOIN_CHIPS * 3);
+
+        // Pay from player.
+        let has_chips = db
+            .pay_from_player(player_id.clone(), JOIN_CHIPS)
+            .await
+            .unwrap();
+        assert!(has_chips);
+
+        // We payed JOIN_CHIPS so we should have left 2 x JOIN_CHIPS.
+        let player = db.get_player(player_id.clone()).await.unwrap();
+        assert_eq!(player.chips, JOIN_CHIPS * 2);
+
+        // Pay remaining chips.
+        let has_chips = db
+            .pay_from_player(player_id.clone(), JOIN_CHIPS * 2)
+            .await
+            .unwrap();
+        assert!(has_chips);
+
+        // Now we cannot pay anymore as we run out of chips.
+        let has_chips = db
+            .pay_from_player(player_id.clone(), JOIN_CHIPS)
+            .await
+            .unwrap();
+        assert!(!has_chips);
     }
 }
