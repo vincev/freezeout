@@ -75,10 +75,12 @@ pub struct State {
     pots: Vec<Pot>,
     board: Vec<Card>,
     rng: StdRng,
+    new_hand_timer: Option<Instant>,
 }
 
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
+    const NEW_HAND_TIMEOUT: Duration = Duration::from_secs(5);
     const START_GAME_SB: Chips = Chips::new(10_000);
     const START_GAME_BB: Chips = Chips::new(20_000);
 
@@ -111,6 +113,7 @@ impl State {
             pots: vec![Pot::default()],
             board: Vec::default(),
             rng,
+            new_hand_timer: None,
         }
     }
 
@@ -270,6 +273,14 @@ impl State {
                 self.broadcast_game_update().await;
             }
         }
+
+        // Check if it is time to start a new hand.
+        if let Some(timer) = &self.new_hand_timer {
+            if timer.elapsed() > Self::NEW_HAND_TIMEOUT {
+                self.new_hand_timer = None;
+                self.enter_start_hand().await;
+            }
+        }
     }
 
     async fn action_update(&mut self) {
@@ -366,13 +377,12 @@ impl State {
             }
         }
 
-        self.players.activate_next_player();
         self.enter_preflop_betting().await;
     }
 
     async fn enter_preflop_betting(&mut self) {
         self.hand_state = HandState::PreflopBetting;
-        self.request_action().await;
+        self.action_update().await;
     }
 
     async fn enter_deal_flop(&mut self) {
@@ -434,9 +444,6 @@ impl State {
         })
         .await;
 
-        // Give time to the UI to look at winning hands and chips.
-        self.broadcast_throttle(Duration::from_millis(4500)).await;
-
         // End game if only player has chips or move to next hand.
         if self.players.count_with_chips() < 2 {
             self.enter_end_game().await;
@@ -454,11 +461,14 @@ impl State {
             }
 
             self.players.remove_with_no_chips();
-            self.enter_start_hand().await;
+            self.new_hand_timer = Some(Instant::now());
         }
     }
 
     async fn enter_end_game(&mut self) {
+        // Give time to the UI to look at winning results before ending the game.
+        self.broadcast_throttle(Duration::from_millis(4500)).await;
+
         self.hand_state = HandState::EndGame;
 
         for player in self.players.iter() {
@@ -949,37 +959,26 @@ mod tests {
             }
 
             // The small blind and big blind players pay the blinds.
-            let sb = &self.state.players.player(0);
             let tp = &self.players[0];
-            assert_eq!(sb.bet, self.state.small_blind);
-            assert_eq!(sb.chips, tp.join_chips - self.state.small_blind);
-            assert!(matches!(sb.action, PlayerAction::SmallBlind));
+            // Use min in case join chips < small blind.
+            let sb_bet = self.state.small_blind.min(tp.join_chips);
 
-            let bb = &self.state.players.player(1);
             let tp = &self.players[1];
-            assert_eq!(bb.bet, self.state.big_blind);
-            assert_eq!(bb.chips, tp.join_chips - self.state.big_blind);
-            assert!(matches!(bb.action, PlayerAction::BigBlind));
-
-            // The next playe to act is after the big blind.
-            let action_player = 2 % self.state.players.count();
-            let action_id = self.state.players.player(action_player).player_id.clone();
+            // Use min in case join chips < small blind.
+            let bb_bet = self.state.big_blind.min(tp.join_chips);
 
             // After players paid the blinds all players should get a game update so
             // that they can update the UI and then the hole cards are dealt.
             for p in self.players.iter_mut() {
                 assert_message!(p, Message::GameUpdate { players, .. }, || {
-                    assert_eq!(players[0].bet, self.state.small_blind);
-                    assert_eq!(players[1].bet, self.state.big_blind);
+                    assert_eq!(players[0].bet, sb_bet);
+                    assert!(matches!(players[0].action, PlayerAction::SmallBlind));
+
+                    assert_eq!(players[1].bet, bb_bet);
+                    assert!(matches!(players[1].action, PlayerAction::BigBlind));
                 });
 
                 assert_message!(p, Message::DealCards(_, _));
-
-                // After the blinds each player get an ActionRequest with the player id
-                // and blinds of the player that must act.
-                assert_message!(p, Message::ActionRequest { player_id, .. }, || {
-                    assert_eq!(player_id, &action_id);
-                });
             }
         }
 
@@ -1051,6 +1050,12 @@ mod tests {
         let mut table = TestTable::new(vec![JOIN_CHIPS, JOIN_CHIPS, JOIN_CHIPS]);
         table.test_start_game().await;
         table.test_start_hand().await;
+
+        // Request action from first player.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
 
         // First player to act goes all in.
         table.bet(Chips::new(JOIN_CHIPS)).await;
@@ -1128,6 +1133,12 @@ mod tests {
         table.test_start_game().await;
         table.test_start_hand().await;
 
+        // Request action from first player.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
+
         // First player to act goes all in, this is the player with fewer chips.
         table.bet(Chips::new(JOIN_CHIPS_SMALL)).await;
 
@@ -1186,6 +1197,12 @@ mod tests {
         let mut table = TestTable::new(vec![JOIN_CHIPS, JOIN_CHIPS, JOIN_CHIPS_SMALL]);
         table.test_start_game().await;
         table.test_start_hand().await;
+
+        // Request action from first player.
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
 
         // First player UG goes all in, this is the player with fewer chips.
         table.bet(Chips::new(JOIN_CHIPS_SMALL)).await;
@@ -1254,10 +1271,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn small_blind_all_in() {
+        // Test games where the small blind chips are lower than the small blind.
+        let mut table = TestTable::new(vec![20_000, 100_000]);
+        // Incremebt small blind to 40000 so that is greater than player chips.
+
+        loop {
+            table.state.update_blinds();
+            if table.state.small_blind == Chips::new(40_000) {
+                break;
+            }
+        }
+
+        table.test_start_game().await;
+        table.test_start_hand().await;
+
+        // The small blind player is all in we should go all the way to showdown.
+        for p in table.players.iter_mut() {
+            // Preflop game update.
+            assert_message!(p, Message::GameUpdate { .. });
+
+            // New round deal flop update.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 3);
+            });
+
+            // New round deal turn update.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 4);
+            });
+
+            // New round deal river update.
+            assert_message!(p, Message::GameUpdate { board, .. }, || {
+                assert_eq!(board.len(), 5);
+            });
+
+            // Pot update.
+            assert_message!(p, Message::GameUpdate { pot, .. }, || {
+                // Pot if the big blind plus the small blind chips that were half the
+                // small blind.
+                assert_eq!(*pot, table.state.big_blind + Chips::new(20_000));
+            });
+
+            // End hand.
+            assert_message!(p, Message::EndHand { payoffs, .. }, || {
+                assert_eq!(payoffs.len(), 1);
+
+                // All chips go back to the BB winner.
+                let payoff = &payoffs[0];
+                assert_eq!(payoff.chips, table.state.big_blind + Chips::new(20_000));
+            });
+        }
+    }
+
+    #[tokio::test]
     async fn all_players_fold() {
         let mut table = TestTable::new(vec![100_000, 100_000, 100_000]);
         table.test_start_game().await;
         table.test_start_hand().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
 
         let bb_player_id = table.state.players.player(1).player_id.clone();
 
@@ -1306,6 +1382,11 @@ mod tests {
         let mut table = TestTable::new(vec![500_000, 300_000, 100_000]);
         table.test_start_game().await;
         table.test_start_hand().await;
+
+        for p in table.players.iter_mut() {
+            assert_message!(p, Message::GameUpdate { .. });
+            assert_message!(p, Message::ActionRequest { .. });
+        }
 
         // First player to act goes all in.
         let player = table.state.players.active_player().unwrap();
