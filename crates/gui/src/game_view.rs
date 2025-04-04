@@ -666,7 +666,10 @@ impl GameView {
                 .map(|p| (p.chips + p.bet).into())
                 .unwrap();
 
-            let slider = Slider::new(&mut params.raise_value, params.min_raise..=max_bet)
+            // Handle case when minimum raise is greater than this player chips, so
+            // that the player can go all in.
+            let min_raise = params.min_raise.min(max_bet);
+            let slider = Slider::new(&mut params.raise_value, min_raise..=max_bet)
                 .show_value(false)
                 .step_by(big_blind as f64)
                 .trailing_fill(true);
@@ -696,10 +699,7 @@ impl GameView {
                 || ui.input(|i| i.key_pressed(Key::ArrowDown))
                 || ui.input(|i| i.key_pressed(Key::ArrowLeft))
             {
-                params.raise_value = params
-                    .raise_value
-                    .saturating_sub(big_blind)
-                    .max(params.min_raise);
+                params.raise_value = params.raise_value.saturating_sub(big_blind).max(min_raise);
             }
 
             // Page down to subtract 4 big blinds
@@ -707,7 +707,7 @@ impl GameView {
                 params.raise_value = params
                     .raise_value
                     .saturating_sub(big_blind * 4)
-                    .max(params.min_raise);
+                    .max(min_raise);
             }
 
             let btn = Button::new(RichText::new("+").font(TEXT_FONT).color(Self::TEXT_COLOR))
