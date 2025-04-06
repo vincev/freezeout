@@ -1,4 +1,4 @@
-FROM rust:latest as builder
+FROM rust:latest AS builder
 
 # Install wasm target and trunk for trunk build.
 RUN rustup target add wasm32-unknown-unknown
@@ -17,6 +17,12 @@ RUN trunk build --release
 # Build runtime image
 FROM nginx:latest
 
+# Install tini to get ctrl-c
+RUN apt-get update \
+    && apt-get install -y tini \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+
 # Copy the game server application from the builder image.
 COPY --from=builder \
     /app/target/release/freezeout-server \
@@ -29,12 +35,7 @@ COPY --from=builder /app/crates/gui/dist /usr/share/nginx/html
 COPY ./docker/nginx.conf /etc/nginx/nginx.conf
 
 # Copy the startup script and set permissions.
-COPY ./docker/start_services.sh /usr/local/bin/start_services.sh
-RUN chmod +x /usr/local/bin/start_services.sh
+COPY ./docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Expose the ports for Nginx and the poker server
-EXPOSE 80
-EXPOSE 9871
-
-# Start the the Poker server and and the Nginx server
-CMD ["/usr/local/bin/start_services.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/entrypoint.sh"]

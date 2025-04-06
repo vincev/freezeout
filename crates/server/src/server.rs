@@ -46,11 +46,14 @@ pub struct Config {
 
 /// Server entry point.
 pub async fn run(config: Config) -> Result<()> {
+    let addr = format!("{}:{}", config.address, config.port);
+    info!(
+        "Listening on {} with {} tables and {} seats per table",
+        addr, config.tables, config.seats
+    );
+
     let sk = load_signing_key(&config.data_path)?;
     let db = open_database(&config.data_path)?;
-
-    let addr = format!("{}:{}", config.address, config.port);
-    info!("Starting server listening on {}", addr);
 
     let listener = TcpListener::bind(&addr)
         .await
