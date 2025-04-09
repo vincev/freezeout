@@ -4,11 +4,10 @@
 //! Connection dialog view.
 use eframe::egui::*;
 use log::error;
-use serde::{Deserialize, Serialize};
 
 use freezeout_core::{crypto::SigningKey, message::Message, poker::Chips};
 
-use crate::{AccountView, App, ConnectionEvent, View};
+use crate::{AccountView, App, AppData, ConnectionEvent, View};
 
 const TEXT_FONT: FontId = FontId::new(16.0, FontFamily::Monospace);
 const LABEL_FONT: FontId = FontId::new(16.0, FontFamily::Monospace);
@@ -21,15 +20,6 @@ pub struct ConnectView {
     chips: Chips,
     error: String,
     server_joined: bool,
-}
-
-/// Data persisted across sessions.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StorageData {
-    /// The last saved passphrase.
-    pub passphrase: String,
-    /// The last saved nickname.
-    pub nickname: String,
 }
 
 impl Default for ConnectView {
@@ -49,7 +39,7 @@ impl Default for ConnectView {
 impl ConnectView {
     /// Creates a new connect view.
     pub fn new(storage: Option<&dyn eframe::Storage>, app: &App) -> Self {
-        app.get_storage::<StorageData>(storage)
+        app.get_storage(storage)
             .map(|d| {
                 let sk = SigningKey::from_phrase(&d.passphrase).unwrap_or_default();
                 ConnectView {
@@ -187,7 +177,7 @@ impl View for ConnectView {
                         }
 
                         let sk = if let Ok(sk) = SigningKey::from_phrase(&self.passphrase) {
-                            let data = StorageData {
+                            let data = AppData {
                                 passphrase: self.passphrase.clone(),
                                 nickname: self.nickname.clone(),
                             };

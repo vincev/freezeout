@@ -4,6 +4,7 @@
 //! Freezeout Poker egui app implementation.
 use anyhow::Result;
 use eframe::egui::*;
+use serde::{Deserialize, Serialize};
 
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
@@ -17,8 +18,15 @@ use crate::{ConnectView, Connection, ConnectionEvent, Textures};
 pub struct Config {
     /// The server address in 'host:port' format.
     pub server_address: String,
-    /// Storage key used for saving configuration across runs.
-    pub storage_key: String,
+}
+
+/// Data persisted across sessions.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppData {
+    /// The last saved passphrase.
+    pub passphrase: String,
+    /// The last saved nickname.
+    pub nickname: String,
 }
 
 /// The application state shared by all views.
@@ -38,6 +46,8 @@ pub struct App {
 }
 
 impl App {
+    const STORAGE_KEY: &str = "appdata";
+
     fn new(config: Config, textures: Textures) -> Self {
         let sk = SigningKey::default();
         Self {
@@ -107,20 +117,18 @@ impl App {
     }
 
     /// Get a value from the app storage.
-    pub fn get_storage<T>(&self, storage: Option<&dyn eframe::Storage>) -> Option<T>
-    where
-        T: serde::de::DeserializeOwned,
-    {
-        storage.and_then(|s| eframe::get_value::<T>(s, &self.config.storage_key))
+    pub fn get_storage(&self, storage: Option<&dyn eframe::Storage>) -> Option<AppData> {
+        storage.and_then(|s| eframe::get_value::<AppData>(s, Self::STORAGE_KEY))
     }
 
     /// Set a value in the app storage.
-    pub fn set_storage<T>(&self, storage: Option<&mut (dyn eframe::Storage + 'static)>, data: &T)
-    where
-        T: serde::Serialize,
-    {
+    pub fn set_storage(
+        &self,
+        storage: Option<&mut (dyn eframe::Storage + 'static)>,
+        data: &AppData,
+    ) {
         if let Some(s) = storage {
-            eframe::set_value::<T>(s, &self.config.storage_key, data);
+            eframe::set_value::<AppData>(s, Self::STORAGE_KEY, data);
             s.flush();
         }
     }

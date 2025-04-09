@@ -20,4 +20,4 @@ pub mod game_view;
 pub use game_view::GameView;
 
 pub mod gui;
-pub use gui::{App, AppFrame, Config, View};
+pub use gui::{App, AppData, AppFrame, Config, View};
