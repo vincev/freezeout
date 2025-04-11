@@ -80,7 +80,7 @@ pub struct State {
 
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
-    const NEW_HAND_TIMEOUT: Duration = Duration::from_secs(5);
+    const NEW_HAND_TIMEOUT: Duration = Duration::from_millis(7500);
     const START_GAME_SB: Chips = Chips::new(10_000);
     const START_GAME_BB: Chips = Chips::new(20_000);
 
