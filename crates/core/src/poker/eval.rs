@@ -63,15 +63,15 @@ impl HandRank {
 impl std::fmt::Display for HandRank {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let rank = match self {
-            HandRank::HighCard => "High Card",
-            HandRank::OnePair => "One Pair",
-            HandRank::TwoPair => "Two Pair",
-            HandRank::ThreeOfAKind => "Three Of A Kind",
-            HandRank::Straight => "Straight",
-            HandRank::Flush => "Flush",
-            HandRank::FullHouse => "Full House",
-            HandRank::FourOfAKind => "Four Of A Kind",
-            HandRank::StraightFlush => "Straight Flush",
+            HandRank::HighCard => "HIGH CARD",
+            HandRank::OnePair => "ONE PAIR",
+            HandRank::TwoPair => "TWO PAIRS",
+            HandRank::ThreeOfAKind => "THREE OF A KIND",
+            HandRank::Straight => "STRAIGHT",
+            HandRank::Flush => "FLUSH",
+            HandRank::FullHouse => "FULL HOUSE",
+            HandRank::FourOfAKind => "FOUR OF A KIND",
+            HandRank::StraightFlush => "STRAIGHT FLUSH",
         };
         write!(f, "{rank}")
     }

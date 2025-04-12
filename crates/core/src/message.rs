@@ -170,7 +170,10 @@ pub struct HandPayoff {
     pub chips: Chips,
     /// The winning cards.
     pub cards: Vec<Card>,
+    /// Cards rank description.
+    pub rank: String,
 }
+
 /// A signed message.
 #[derive(Debug, Clone)]
 pub struct SignedMessage {

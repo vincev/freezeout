@@ -432,8 +432,13 @@ impl GameView {
         textures: &Textures,
     ) {
         const IMAGE_LY: f32 = 60.0;
+        const LABEL_LY: f32 = 20.0;
 
-        if !player.winning_cards.is_empty() {
+        if let Some(payoff) = &player.payoff {
+            if payoff.cards.is_empty() {
+                return;
+            }
+
             let x_pos = if let Align::RIGHT = align.x() {
                 rect.left_top().x - rect.size().x - 10.0
             } else {
@@ -443,27 +448,54 @@ impl GameView {
             let y_pos = if let Align::TOP = align.y() {
                 rect.left_top().y + 130.0
             } else {
-                rect.left_top().y - (IMAGE_LY + 10.0)
+                rect.left_top().y - (IMAGE_LY + LABEL_LY + 10.0)
             };
 
             let cards_rect = Rect::from_min_size(
                 pos2(x_pos, y_pos),
-                vec2(Self::ACTION_BUTTON_LX * 2.0 + 10.0, IMAGE_LY),
+                vec2(Self::ACTION_BUTTON_LX * 2.0 + 10.0, IMAGE_LY + LABEL_LY),
             );
 
             paint_border(ui, &cards_rect);
 
             let card_lx = (cards_rect.size().x - 11.0) / 5.0;
-            let card_size = vec2(card_lx, cards_rect.size().y - 8.0);
+            let card_size = vec2(card_lx, IMAGE_LY - 8.0);
             let mut card_rect =
                 Rect::from_min_size(cards_rect.left_top() + vec2(4.0, 4.0), card_size);
 
-            for card in &player.winning_cards {
+            for card in &payoff.cards {
                 let tx = textures.card(*card);
                 Image::new(&tx).corner_radius(2.0).paint_at(ui, card_rect);
 
                 card_rect = card_rect.translate(vec2(card_lx + 1.0, 0.0));
             }
+
+            let rank_rect = Rect::from_min_size(
+                pos2(x_pos, y_pos + IMAGE_LY - 2.0),
+                vec2(cards_rect.width(), LABEL_LY),
+            );
+
+            let rounding = CornerRadius {
+                sw: 4,
+                se: 4,
+                ..CornerRadius::default()
+            };
+
+            ui.painter().rect(
+                rank_rect.shrink2(vec2(2.0, 0.0)),
+                rounding,
+                Self::TEXT_COLOR,
+                Stroke::NONE,
+                StrokeKind::Inside,
+            );
+
+            ui.painter().text(
+                rank_rect.center(),
+                Align2::CENTER_CENTER,
+                &payoff.rank,
+                FontId::new(14.0, FontFamily::Monospace),
+                Self::BG_COLOR,
+            );
         }
     }
 
@@ -485,7 +517,7 @@ impl GameView {
 
         paint_border(ui, &rect);
 
-        if !matches!(player.action, PlayerAction::None) || player.winning_chips > Chips::ZERO {
+        if !matches!(player.action, PlayerAction::None) || player.payoff.is_some() {
             let mut action_rect = rect.shrink(1.0);
             action_rect.set_height(rect.height() / 2.0);
 
@@ -503,7 +535,7 @@ impl GameView {
                 StrokeKind::Inside,
             );
 
-            let label = if player.winning_chips > Chips::ZERO {
+            let label = if player.payoff.is_some() {
                 "WINNER"
             } else {
                 player.action.label()
@@ -517,13 +549,17 @@ impl GameView {
                 Self::BG_COLOR,
             );
 
-            if player.bet > Chips::ZERO || player.winning_chips > Chips::ZERO {
+            if player.bet > Chips::ZERO || player.payoff.is_some() {
                 let amount_rect = action_rect.translate(vec2(3.0, action_rect.height() + 2.0));
 
                 let amount = if player.bet > Chips::ZERO {
                     player.bet.to_string()
                 } else {
-                    player.winning_chips.to_string()
+                    player
+                        .payoff
+                        .as_ref()
+                        .map(|p| p.chips.to_string())
+                        .unwrap_or_default()
                 };
 
                 let galley = ui.painter().layout_no_wrap(

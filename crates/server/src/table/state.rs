@@ -528,6 +528,7 @@ impl State {
                                 player_id: player.player_id.clone(),
                                 chips: pot.chips,
                                 cards: Vec::default(),
+                                rank: String::default(),
                             });
                         }
                     }
@@ -591,6 +592,7 @@ impl State {
                                 player_id: player.player_id.clone(),
                                 chips: player_payoff,
                                 cards,
+                                rank: hv.rank().to_string(),
                             });
                         }
                     }

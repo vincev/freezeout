@@ -284,8 +284,8 @@ fn print_player(w: &mut impl io::Write, p: &Player, row: u16) -> Result<()> {
         style::Print(format!("{id:^10.10}")),
     )?;
 
-    let action = if !matches!(p.action, PlayerAction::None) || p.winning_chips > Chips::ZERO {
-        if p.winning_chips > Chips::ZERO {
+    let action = if !matches!(p.action, PlayerAction::None) || p.payoff.is_some() {
+        if p.payoff.is_some() {
             "WINNER"
         } else {
             p.action.label()
@@ -294,11 +294,14 @@ fn print_player(w: &mut impl io::Write, p: &Player, row: u16) -> Result<()> {
         ""
     };
 
-    let bet = if p.bet > Chips::ZERO || p.winning_chips > Chips::ZERO {
+    let bet = if p.bet > Chips::ZERO || p.payoff.is_some() {
         if p.bet > Chips::ZERO {
             p.bet.to_string()
         } else {
-            p.winning_chips.to_string()
+            p.payoff
+                .as_ref()
+                .map(|p| p.chips.to_string())
+                .unwrap_or_default()
         }
     } else {
         "".to_string()

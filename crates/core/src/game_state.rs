@@ -4,7 +4,7 @@
 //! Client game state types.
 use crate::{
     crypto::PeerId,
-    message::{Message, PlayerAction, PlayerUpdate, SignedMessage},
+    message::{HandPayoff, Message, PlayerAction, PlayerUpdate, SignedMessage},
     poker::{Card, Chips, PlayerCards, TableId},
 };
 
@@ -21,10 +21,8 @@ pub struct Player {
     pub chips: Chips,
     /// The last player bet.
     pub bet: Chips,
-    /// This player winning chips.
-    pub winning_chips: Chips,
-    /// This player winning hand.
-    pub winning_cards: Vec<Card>,
+    /// The hand payoff.
+    pub payoff: Option<HandPayoff>,
     /// The last player action.
     pub action: PlayerAction,
     /// The last player action.
@@ -45,8 +43,7 @@ impl Player {
             nickname,
             chips,
             bet: Chips::ZERO,
-            winning_chips: Chips::ZERO,
-            winning_cards: Vec::default(),
+            payoff: None,
             action: PlayerAction::None,
             action_timer: None,
             cards: PlayerCards::None,
@@ -181,8 +178,7 @@ impl GameState {
                 for player in &mut self.players {
                     player.cards = PlayerCards::None;
                     player.action = PlayerAction::None;
-                    player.winning_chips = Chips::ZERO;
-                    player.winning_cards.clear();
+                    player.payoff = None;
                 }
             }
             Message::EndHand { payoffs, .. } => {
@@ -196,8 +192,7 @@ impl GameState {
                         .iter_mut()
                         .find(|p| p.player_id == payoff.player_id)
                     {
-                        p.winning_chips = payoff.chips;
-                        p.winning_cards = payoff.cards.clone();
+                        p.payoff = Some(payoff.clone());
                     }
                 }
             }
