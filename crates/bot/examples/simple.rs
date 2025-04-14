@@ -7,13 +7,14 @@ use anyhow::Result;
 use clap::Parser;
 use rand::prelude::*;
 
-use freezeout_core::{
-    game_state::{ActionRequest, GameState},
-    message::PlayerAction,
-    poker::{Chips, PlayerCards},
+use freezeout_bot::{
+    Strategy,
+    core::{
+        game_state::{ActionRequest, GameState},
+        message::PlayerAction,
+        poker::{Chips, PlayerCards},
+    },
 };
-
-use freezeout_bot::Strategy;
 
 #[derive(Clone)]
 struct AlwaysCallOrCheck;
