@@ -11,7 +11,23 @@ To build the image go to the repository root and run:
 docker build -f docker/Dockerfile -t freezeout:0.1.0 .
 ```
 
-### Run the freezeout poker server
+### Run the Web server
+
+To run the web server that serves the WASM client we need to know the server host
+address and port the client uses to connect to the server and pass it to the
+container using the environment variable `HOST` and optionally `PORT` if we use a non
+default port:
+
+``` bash
+$ docker run -e HOST=192.168.178.101 -p 80:80 freezeout:0.1.0  web
+Starting nginx server with web clients connecting to 192.168.178.101.
+```
+
+then to run the UI client use a browser to connect to the web server URL, note that
+this uses http for loading the WASM client, connections between the UI client and the
+game server are encrypted using NOISE protocol.
+
+### Run the Poker server
 
 To run the poker server use the `poker` command:
 
@@ -23,8 +39,8 @@ Starting Poker server
 [2025-04-06T18:16:02.951Z INFO ] Writing database /usr/share/freezeout/game.db
 ```
 
-Note that we need to map the server listening port to allow clients to
-connect to it. To use a different port we can use the `--port` option:
+Note that we need to map the server listening port to allow clients to connect to it.
+To use a different port we can use the `--port` option:
 
 ``` bash
 $ docker run -p 9888:9888 freezeout:0.1.0 poker --port 9888
@@ -45,9 +61,9 @@ Starting Poker server
 [2025-04-06T18:17:29.740Z INFO ] Writing database /usr/share/freezeout/game.db
 ```
 
-The server saves player chips into a local database, to persist the
-data across containers runs we can use a volume and map the server
-data folder with the `-v` option:
+The server saves player chips into a local database, to persist the data across
+containers runs we can use a volume and map the server data folder with the `-v`
+option:
 
 ``` bash
 $ docker run -p 9871:9871 -v freezeout:/usr/share/freezeout freezeout:0.1.0 poker
@@ -57,21 +73,3 @@ Starting Poker server
 [2025-04-06T18:30:29.906Z INFO ] Writing database /usr/share/freezeout/game.db
 ```
 
-### Run the Web server
-
-To run the web server that serves the WASM client we need to know the
-server host address and port the client uses to connect to the server
-and pass it to the container using the environment variable `HOST` and
-optionally `PORT` if we use a non default port:
-
-``` bash
-$ docker run -e HOST=192.168.178.101 -p 80:80 freezeout:0.1.0  web
-Starting nginx server with web clients connecting to 192.168.178.101.
-```
-
-### Run the UI client
-
-To run the UI client use a browser to connect to the web server URL,
-note that this uses http for loading the WASM client, connections
-between the UI client and the game server are encrypted using NOISE
-protocol.

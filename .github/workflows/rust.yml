@@ -7,10 +7,12 @@ concurrency:
 on:
   push:
     paths-ignore:
-      - "**.md"
+    - "**.md"
+    - "**.gif"
   pull_request:
     paths-ignore:
-      - "**.md"
+    - "**.md"
+    - "**.gif"
   # manual trigger
   workflow_dispatch:
 
