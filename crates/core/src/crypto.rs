@@ -5,7 +5,8 @@
 use anyhow::Result;
 use bip32::Mnemonic;
 use blake2::{Blake2s, Digest, digest, digest::typenum::ToInt};
-use ed25519_dalek::{Signer, Verifier};
+use ed25519_dalek::{SecretKey, Signer, Verifier};
+use rand::{CryptoRng, RngCore, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -17,8 +18,8 @@ type SigHasher = Blake2s<digest::consts::U32>;
 
 impl Default for SigningKey {
     fn default() -> Self {
-        let mut rng = rand::thread_rng();
-        Self(ed25519_dalek::SigningKey::generate(&mut rng))
+        let mut rng = StdRng::from_os_rng();
+        Self::from_crypto_rng(&mut rng)
     }
 }
 
@@ -53,6 +54,12 @@ impl SigningKey {
     /// Get the signature verifying key.
     pub fn verifying_key(&self) -> VerifyingKey {
         VerifyingKey(self.0.verifying_key())
+    }
+
+    fn from_crypto_rng<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+        let mut key = SecretKey::default();
+        rng.fill_bytes(&mut key);
+        Self(ed25519_dalek::SigningKey::from_bytes(&key))
     }
 }
 

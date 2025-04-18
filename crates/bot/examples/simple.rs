@@ -5,7 +5,6 @@
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 use anyhow::Result;
 use clap::Parser;
-use rand::prelude::*;
 
 use freezeout_bot::{
     Strategy,
@@ -22,7 +21,7 @@ struct AlwaysCallOrCheck;
 impl Strategy for AlwaysCallOrCheck {
     fn execute(&mut self, req: &ActionRequest, state: &GameState) -> (PlayerAction, Chips) {
         // Some randomness.
-        let p = random::<f64>();
+        let p = rand::random::<f64>();
 
         // Get local player.
         let player = &state.players()[0];

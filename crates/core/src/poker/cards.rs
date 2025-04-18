@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn card_encoding() {
         let mut cards = HashSet::default();
-        let mut deck = Deck::new_and_shuffled(&mut thread_rng());
+        let mut deck = Deck::new_and_shuffled(&mut rand::rng());
 
         while !deck.is_empty() {
             let card = deck.deal();

@@ -86,7 +86,7 @@ impl State {
 
     /// Create a new state.
     pub fn new(table_id: TableId, seats: usize, sk: Arc<SigningKey>, db: Db) -> Self {
-        Self::with_rng(table_id, seats, sk, db, StdRng::from_entropy())
+        Self::with_rng(table_id, seats, sk, db, StdRng::from_os_rng())
     }
 
     /// Create a new state with user initialized randomness.
@@ -882,9 +882,8 @@ mod tests {
 
     impl TestTable {
         /// Creates a `State` with seeded randomness and memory database.
-        /// Creates a `State` with seeded randomness and memory database.
         fn new(player_chips: Vec<u32>) -> Self {
-            let rng = StdRng::seed_from_u64(121);
+            let rng = StdRng::seed_from_u64(101333);
             let db = Db::open_in_memory().unwrap();
             let sk = Arc::new(SigningKey::default());
             let state = State::with_rng(TableId::new_id(), player_chips.len(), sk, db, rng);

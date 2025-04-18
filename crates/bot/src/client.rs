@@ -153,7 +153,7 @@ impl<S: Strategy> Client<S> {
                 state.handle_message(msg);
 
                 if let Some(req) = state.action_request() {
-                    let delay = thread_rng().gen_range(500..1500);
+                    let delay = rand::rng().random_range(500..1500);
                     time::sleep(Duration::from_millis(delay)).await;
 
                     let (action, amount) = self.strategy.execute(req, &state);

@@ -1364,12 +1364,11 @@ mod tests {
     use super::*;
     use ahash::AHashMap;
     use itertools::Itertools;
-    use rand::prelude::*;
 
     #[test]
     fn eval_5cards() {
         let mut hands = AHashMap::new();
-        for hand in Deck::new_and_shuffled(&mut thread_rng())
+        for hand in Deck::new_and_shuffled(&mut rand::rng())
             .into_iter()
             .combinations(5)
         {
@@ -1453,7 +1452,7 @@ mod tests {
     fn eval_7cards() {
         // Evaluate all 133M hands.
         let mut hands = AHashMap::new();
-        let deck = Deck::new_and_shuffled(&mut thread_rng())
+        let deck = Deck::new_and_shuffled(&mut rand::rng())
             .into_iter()
             .collect::<Vec<_>>();
         let mut hand = [
