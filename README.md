@@ -24,7 +24,7 @@ player clients and a client to connect to the server and play games.
 ### Install the server
 
 Precompiled `freezeout-server` binaries for Linux, Mac, and Windows are available on
-the [releases](./releases) page. If you have Docker installed follow [these
+the [release][release-link] page. If you have Docker installed follow [these
 steps](docker#run-the-freezeout-poker-server) to run the server.
 
 ### Install the client
@@ -37,7 +37,7 @@ container](docker#run-the-web-server) that runs a nginx server that serves the
 client.
 
 For the native client there are precompiled `freezeout-gui` binaries for Linux,
-Mac, and Windows on the [releases](./releases) page.
+Mac, and Windows on the [release][release-link] page.
 
 ## Running the server
 
@@ -197,5 +197,6 @@ the [simple](./crates/bot/examples/simple.rs) bot.
 [cterm-link]: https://github.com/crossterm-rs/crossterm
 [noise-link]: https://noiseprotocol.org/
 [tokio-link]: https://tokio.rs/
-[trunk-link]: https://trunkrs.dev/
+[trunk-link]: htntps://trunkrs.dev/
+[release-link]: https://github.com/vincev/freezeout/releases/latest
 
