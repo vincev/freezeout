@@ -1,0 +1,86 @@
+name: Release build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag (e.g. v0.1.2)'
+        required: true
+
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_name: linux
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_name: macos
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_name: windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "release-${{ matrix.target }}"
+
+      - name: Build crate
+        run: cargo build --release 
+
+      - name: Create archives
+        shell: bash
+        run: |
+          release_dir=release
+          version=${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          version=${version#v}  # Remove 'v' prefix from tag (e.g., v0.1.2 -> 0.1.2)
+          mkdir -p $release_dir
+          for binary_name in freezeout-server freezeout-gui; do
+              [ "${{ matrix.archive_name }}" = "windows" ] && binary_file=${binary_name}.exe
+              tar -C target/release \
+                -czf $release_dir/$binary_name-$version-${{ matrix.archive_name }}.tar.gz \
+                $binary_name
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: release/
+
+  create-release:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            artifacts/linux/*.tar.gz
+            artifacts/macos/*.tar.gz
+            artifacts/windows/*.tar.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
