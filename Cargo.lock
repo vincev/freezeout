@@ -1215,6 +1215,7 @@ dependencies = [
  "bs58",
  "bytes",
  "ed25519-dalek",
+ "freezeout-eval",
  "futures-util",
  "getrandom 0.3.2",
  "itertools",
@@ -1223,6 +1224,17 @@ dependencies = [
  "snow",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "freezeout-eval"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "itertools",
+ "rand 0.9.1",
+ "serde",
 ]
 
 [[package]]

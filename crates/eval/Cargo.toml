@@ -1,0 +1,16 @@
+[package]
+authors = ["Vince Vasta <vince.vasta@gmail.com>"]
+description = "Freezeout Poker hand evaluator."
+edition = "2024"
+license = "Apache-2.0"
+name = "freezeout-eval"
+version = "0.1.0"
+
+[dependencies]
+ahash = { workspace = true }
+anyhow = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+itertools = "0.14.0"

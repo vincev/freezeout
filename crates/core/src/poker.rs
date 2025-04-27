@@ -5,11 +5,10 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops, sync::atomic};
 
-mod cards;
-pub use cards::{Card, Deck, Rank, Suit};
-
-mod eval;
-pub use eval::{HandRank, HandValue};
+pub use freezeout_eval::{
+    cards::{Card, Deck, Rank, Suit},
+    eval::{HandRank, HandValue},
+};
 
 /// A unique table identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
