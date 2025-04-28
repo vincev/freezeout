@@ -1232,7 +1232,6 @@ version = "0.1.0"
 dependencies = [
  "ahash",
  "anyhow",
- "itertools",
  "rand 0.9.1",
  "serde",
 ]

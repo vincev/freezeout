@@ -200,11 +200,9 @@ impl Deck {
 
     /// Creates a new shuffled deck.
     pub fn new_and_shuffled<R: Rng>(rng: &mut R) -> Self {
-        let mut cards = Suit::suits()
-            .flat_map(|s| Rank::ranks().map(move |r| Card::new(r, s)))
-            .collect::<Vec<_>>();
-        cards.shuffle(rng);
-        Self { cards }
+        let mut deck = Self::default();
+        deck.cards.shuffle(rng);
+        deck
     }
 
     /// Deals a card from the deck.
@@ -215,6 +213,65 @@ impl Deck {
     /// Checks if the deck is empty.
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
+    }
+
+    /// Number of cards in the deck.
+    pub fn count(&self) -> usize {
+        self.cards.len()
+    }
+
+    /// Removes a card from the deck.
+    pub fn remove(&mut self, card: Card) {
+        self.cards.retain(|c| c != &card);
+    }
+
+    /// Calls a closure for each hand with n cards.
+    pub fn for_each<F>(&self, k: usize, mut f: F)
+    where
+        F: FnMut(&[Card]),
+    {
+        if k > self.cards.len() {
+            return;
+        }
+
+        // Algorithm L from TAOCP 4a
+        let mut c = vec![0usize; k + 3];
+
+        for i in 0..k {
+            c[i + 1] = i;
+        }
+
+        c[k + 1] = self.cards.len();
+
+        let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); k];
+        loop {
+            for i in 0..k {
+                h[i] = self.cards[c[i + 1]];
+            }
+
+            f(&h);
+
+            let mut j = 1;
+            while c[j] + 1 == c[j + 1] {
+                c[j] = j - 1;
+                j = j + 1;
+            }
+
+            if j > k {
+                break;
+            }
+
+            c[j] += 1;
+        }
+    }
+}
+
+impl Default for Deck {
+    fn default() -> Self {
+        let cards = Suit::suits()
+            .flat_map(|s| Rank::ranks().map(move |r| Card::new(r, s)))
+            .collect::<Vec<_>>();
+        Self { cards }
     }
 }
 
@@ -276,5 +333,58 @@ mod tests {
 
         let c = Card::new(Rank::Ace, Suit::Hearts);
         assert_eq!(c.to_string(), "AH");
+    }
+
+    #[test]
+    fn deck_for_each() {
+        let deck = Deck::default();
+        assert_eq!(deck.count(), Deck::SIZE);
+
+        let mut hands = HashSet::default();
+        deck.for_each(5, |cards| {
+            assert_eq!(cards.len(), 5);
+            hands.insert(cards.to_owned());
+        });
+        assert_eq!(hands.len(), 2_598_960);
+
+        hands.clear();
+        deck.for_each(2, |cards| {
+            assert_eq!(cards.len(), 2);
+            hands.insert(cards.to_owned());
+        });
+        assert_eq!(hands.len(), 1_326);
+
+        hands.clear();
+        deck.for_each(3, |cards| {
+            assert_eq!(cards.len(), 3);
+            hands.insert(cards.to_owned());
+        });
+        assert_eq!(hands.len(), 22_100);
+    }
+
+    #[test]
+    fn deck_for_each_7cards() {
+        let deck = Deck::default();
+
+        let mut count = 0;
+        deck.for_each(7, |cards| {
+            assert_eq!(cards.len(), 7);
+            count += 1;
+        });
+        assert_eq!(count, 133_784_560);
+    }
+
+    #[test]
+    fn deck_for_each_remove() {
+        let mut deck = Deck::default();
+        deck.remove(Card::new(Rank::Ace, Suit::Diamonds));
+        deck.remove(Card::new(Rank::King, Suit::Diamonds));
+
+        let mut count = 0;
+        deck.for_each(7, |cards| {
+            assert_eq!(cards.len(), 7);
+            count += 1;
+        });
+        assert_eq!(count, 99_884_400);
     }
 }

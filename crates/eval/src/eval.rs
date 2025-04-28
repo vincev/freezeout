@@ -1368,18 +1368,14 @@ fn eval_five_cards(cards: &[Card]) -> u16 {
 mod tests {
     use super::*;
     use ahash::AHashMap;
-    use itertools::Itertools;
 
     #[test]
     fn eval_5cards() {
         let mut hands = AHashMap::new();
-        for hand in Deck::new_and_shuffled(&mut rand::rng())
-            .into_iter()
-            .combinations(5)
-        {
+        Deck::default().for_each(5, |hand| {
             let val = HandValue::eval(&hand).rank();
             *hands.entry(val).or_insert(0) += 1;
-        }
+        });
 
         // Values from http://suffe.cool/poker/evaluator.html
         assert_eq!(hands[&HandRank::HighCard], 1_302_540);
@@ -1450,44 +1446,18 @@ mod tests {
         assert_eq!(h1val, h2val);
     }
 
-    // Marked as ignore as it takes around 20secs in release mode to evaluate all
-    // possible 7 cards hands (133M hands).
+    // Marked as ignore as it takes around 16 secs in release mode to evaluate all
+    // possible 7 cards hands (133M hands ~8.3M hands/sec).
     #[ignore]
     #[test]
     fn eval_7cards() {
         // Evaluate all 133M hands.
         let mut hands = AHashMap::new();
-        let deck = Deck::new_and_shuffled(&mut rand::rng())
-            .into_iter()
-            .collect::<Vec<_>>();
-        let mut hand = [
-            deck[0], deck[1], deck[2], deck[3], deck[4], deck[5], deck[6],
-        ];
 
-        // Unrolling the loop is about 10x faster than itertool::combinations(7)
-        for c1 in 0..46 {
-            for c2 in c1 + 1..47 {
-                for c3 in c2 + 1..48 {
-                    for c4 in c3 + 1..49 {
-                        for c5 in c4 + 1..50 {
-                            for c6 in c5 + 1..51 {
-                                for c7 in c6 + 1..52 {
-                                    hand[0] = deck[c1];
-                                    hand[1] = deck[c2];
-                                    hand[2] = deck[c3];
-                                    hand[3] = deck[c4];
-                                    hand[4] = deck[c5];
-                                    hand[5] = deck[c6];
-                                    hand[6] = deck[c7];
-                                    let val = HandValue::eval(&hand).rank();
-                                    *hands.entry(val).or_insert(0) += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        Deck::default().for_each(7, |hand| {
+            let val = HandValue::eval(&hand).rank();
+            *hands.entry(val).or_insert(0u32) += 1;
+        });
 
         assert_eq!(hands[&HandRank::HighCard], 23_294_460);
         assert_eq!(hands[&HandRank::OnePair], 58_627_800);
@@ -1498,5 +1468,8 @@ mod tests {
         assert_eq!(hands[&HandRank::FullHouse], 3_473_184);
         assert_eq!(hands[&HandRank::FourOfAKind], 224_848);
         assert_eq!(hands[&HandRank::StraightFlush], 41_584);
+
+        let total = hands.values().sum::<u32>();
+        assert_eq!(total, 133_784_560);
     }
 }
