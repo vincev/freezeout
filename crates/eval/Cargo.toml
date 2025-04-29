@@ -12,3 +12,5 @@ anyhow = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 
+[features]
+eval = []

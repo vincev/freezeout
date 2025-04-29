@@ -5,4 +5,6 @@
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 
 pub mod cards;
+
+#[cfg(feature = "eval")]
 pub mod eval;
