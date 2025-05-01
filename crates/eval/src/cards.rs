@@ -26,40 +26,36 @@ const PRIMES: [u32; 13] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 ///
 /// [kevlink]: http://suffe.cool/poker/evaluator.html
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct Card {
-    card_id: u32,
-}
+pub struct Card(u32);
 
 /// A Poker card.
 impl Card {
     /// Create a card given a suit and rank.
     pub fn new(rank: Rank, suit: Suit) -> Card {
         let (rank, suit) = (rank as u32, suit as u32);
-        Card {
-            card_id: PRIMES[rank as usize] | (rank << 8) | (suit << 12) | (1 << (rank + 16)),
-        }
+        Self(PRIMES[rank as usize] | (rank << 8) | (suit << 12) | (1 << (rank + 16)))
     }
 
     /// This card unique id.
     pub fn id(&self) -> u32 {
-        self.card_id
+        self.0
     }
 
     /// Returns the card suit.
     pub fn suit(&self) -> Suit {
-        let suit_bits = (self.card_id >> 12) & 0xF;
+        let suit_bits = self.suit_bits();
         match suit_bits {
             0x8 => Suit::Clubs,
             0x4 => Suit::Diamonds,
             0x2 => Suit::Hearts,
             0x1 => Suit::Spades,
-            _ => panic!("Invalid suit value 0x{:x}", self.card_id),
+            _ => panic!("Invalid suit value 0x{:x}", self.0),
         }
     }
 
     /// Returns the card rank.
     pub fn rank(&self) -> Rank {
-        let rank_bits = (self.card_id >> 8) & 0xF;
+        let rank_bits = self.rank_bits();
         match rank_bits {
             0 => Rank::Deuce,
             1 => Rank::Trey,
@@ -74,8 +70,20 @@ impl Card {
             10 => Rank::Queen,
             11 => Rank::King,
             12 => Rank::Ace,
-            _ => panic!("Invalid rank 0x{:x}", self.card_id),
+            _ => panic!("Invalid rank 0x{:x}", self.0),
         }
+    }
+
+    /// Returns the rank bits.
+    #[inline]
+    pub fn rank_bits(&self) -> u8 {
+        ((self.0 >> 8) & 0xf) as u8
+    }
+
+    /// Returns the suit bits.
+    #[inline]
+    pub fn suit_bits(&self) -> u8 {
+        ((self.0 >> 12) & 0xf) as u8
     }
 }
 

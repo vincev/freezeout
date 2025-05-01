@@ -11,6 +11,10 @@ ahash = { workspace = true }
 anyhow = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
+xxhash-rust = { version = "0.8.15", optional = true, features = ["xxh3"] }
 
 [features]
-eval = []
+eval = ["xxhash-rust"]
+
+[profile.release]
+opt-level = 3

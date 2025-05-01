@@ -549,8 +549,8 @@ impl State {
                         .map(|(p, c1, c2)| {
                             let mut cards = vec![c1, c2];
                             cards.extend_from_slice(&self.board);
-                            let hv = HandValue::eval(&cards);
-                            (p, hv)
+                            let (v, bh) = HandValue::eval_with_best_hand(&cards);
+                            (p, v, bh)
                         })
                         .collect::<Vec<_>>();
 
@@ -563,11 +563,11 @@ impl State {
                     hands.sort_by(|p1, p2| p2.1.cmp(&p1.1));
 
                     // Count hands with the same value.
-                    let winners_count = hands.iter().filter(|(_, v)| v == &hands[0].1).count();
+                    let winners_count = hands.iter().filter(|(_, v, _)| v == &hands[0].1).count();
                     let win_payoff = pot.chips / winners_count as u32;
                     let win_remainder = pot.chips % winners_count as u32;
 
-                    for (idx, (player, hv)) in hands.iter_mut().take(winners_count).enumerate() {
+                    for (idx, (player, v, bh)) in hands.iter_mut().take(winners_count).enumerate() {
                         // Give remaineder to first player.
                         let player_payoff = if idx == 0 {
                             win_payoff + win_remainder
@@ -578,7 +578,7 @@ impl State {
                         player.chips += player_payoff;
 
                         // Sort by rank for the UI.
-                        let mut cards = hv.hand().to_vec();
+                        let mut cards = bh.to_vec();
                         cards.sort_by_key(|c| c.rank());
 
                         // If a player has already a payoff add chips to that one.
@@ -592,7 +592,7 @@ impl State {
                                 player_id: player.player_id.clone(),
                                 chips: player_payoff,
                                 cards,
-                                rank: hv.rank().to_string(),
+                                rank: v.rank().to_string(),
                             });
                         }
                     }

@@ -9,8 +9,10 @@
 //!
 //! [kevlink]: http://suffe.cool/poker/evaluator.html
 //! [kevcode]: http://suffe.cool/poker/code/
-use super::cards::*;
+use crate::cards::*;
 use std::cmp::Ordering;
+
+use super::eval7;
 
 /// An hand rank.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -79,69 +81,35 @@ impl std::fmt::Display for HandRank {
 
 /// The value of hand from 5, 6, or 7 cards.
 #[derive(Debug, Clone, Copy)]
-pub struct HandValue {
-    value: u16,
-    rank: HandRank,
-    hand: [Card; 5],
-}
+pub struct HandValue(u16);
 
 impl HandValue {
-    /// Evaluate the best hand from the given cards.
+    /// Evaluates a hand and the best cards for 5, 6 or 7 cards.
+    pub fn eval_with_best_hand(cards: &[Card]) -> (HandValue, [Card; 5]) {
+        if cards.len() == 7 {
+            let (v, best_hand) = eval_seven_cards(cards, true);
+            (v, best_hand.unwrap())
+        } else if cards.len() == 6 {
+            eval_six_cards(cards)
+        } else if cards.len() == 5 {
+            let value = eval_five_cards(&cards);
+            let hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
+            (value, hand)
+        } else {
+            panic!("Hands size not supported {}", cards.len());
+        }
+    }
+
+    /// Evaluates a hand for 5, 6 or 7 cards.
     pub fn eval(cards: &[Card]) -> HandValue {
         if cards.len() == 7 {
-            let mut hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
-            let mut best_hand_value = 9999u16;
-            let mut best_hand = hand;
-
-            for perm in PERM7 {
-                hand[0] = cards[perm[0]];
-                hand[1] = cards[perm[1]];
-                hand[2] = cards[perm[2]];
-                hand[3] = cards[perm[3]];
-                hand[4] = cards[perm[4]];
-                let hand_value = eval_five_cards(&hand);
-                if hand_value < best_hand_value {
-                    best_hand = hand;
-                    best_hand_value = hand_value;
-                }
-            }
-
-            Self {
-                value: best_hand_value,
-                rank: HandRank::from_eval(best_hand_value),
-                hand: best_hand,
-            }
+            let (v, _) = eval_seven_cards(cards, false);
+            v
         } else if cards.len() == 6 {
-            let mut hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
-            let mut best_hand_value = 9999u16;
-            let mut best_hand = hand;
-
-            for perm in PERM6 {
-                hand[0] = cards[perm[0]];
-                hand[1] = cards[perm[1]];
-                hand[2] = cards[perm[2]];
-                hand[3] = cards[perm[3]];
-                hand[4] = cards[perm[4]];
-                let hand_value = eval_five_cards(&hand);
-                if hand_value < best_hand_value {
-                    best_hand = hand;
-                    best_hand_value = hand_value;
-                }
-            }
-
-            Self {
-                value: best_hand_value,
-                rank: HandRank::from_eval(best_hand_value),
-                hand: best_hand,
-            }
+            let (v, _) = eval_six_cards(cards);
+            v
         } else if cards.len() == 5 {
-            let hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
-            let value = eval_five_cards(cards);
-            Self {
-                value,
-                rank: HandRank::from_eval(value),
-                hand,
-            }
+            eval_five_cards(&cards)
         } else {
             panic!("Hands size not supported {}", cards.len());
         }
@@ -149,24 +117,26 @@ impl HandValue {
 
     /// The hand rank.
     pub fn rank(&self) -> HandRank {
-        self.rank
+        HandRank::from_eval(self.0)
     }
 
     /// The hand rank value.
     pub fn value(&self) -> u16 {
-        self.value
+        self.0
     }
+}
 
-    /// The best hand in case evaluation was done from 6 or 7 cards.
-    pub fn hand(&self) -> [Card; 5] {
-        self.hand
+impl Default for HandValue {
+    fn default() -> Self {
+        // The lowest hand value
+        Self(u16::MAX)
     }
 }
 
 impl Ord for HandValue {
     fn cmp(&self, other: &Self) -> Ordering {
         // Comparison is inverted as a stronger hand has smaller value.
-        other.value.cmp(&self.value)
+        other.0.cmp(&self.0)
     }
 }
 
@@ -178,11 +148,157 @@ impl PartialOrd for HandValue {
 
 impl PartialEq for HandValue {
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
+        self.0 == other.0
     }
 }
 
 impl Eq for HandValue {}
+
+/// Evaluate a seven cards hand.
+///
+/// For higher throughput pass false to compute_best if only the hand value is needed.
+fn eval_seven_cards(cards: &[Card], compute_best: bool) -> (HandValue, Option<[Card; 5]>) {
+    let mut suit_counts = [0; 4];
+    for c in cards {
+        match c.suit_bits() {
+            0x8 => suit_counts[0] += 1,
+            0x4 => suit_counts[1] += 1,
+            0x2 => suit_counts[2] += 1,
+            0x1 => suit_counts[3] += 1,
+            _ => (),
+        }
+    }
+
+    // Use lookup table if suits are not significant (~97% of hands)
+    if suit_counts.iter().all(|c| *c < 5) {
+        let (value, best_ranks) = eval7::hand_rank(cards);
+        let best_hand = if compute_best {
+            Some(extract_hand(cards, &best_ranks))
+        } else {
+            None
+        };
+
+        (HandValue(value), best_hand)
+    } else {
+        let mut hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
+        let mut best_value = HandValue::default();
+        let mut best_hand = None;
+
+        for perm in PERM7 {
+            hand[0] = cards[perm[0]];
+            hand[1] = cards[perm[1]];
+            hand[2] = cards[perm[2]];
+            hand[3] = cards[perm[3]];
+            hand[4] = cards[perm[4]];
+            let value = eval_five_cards(&hand);
+            if value > best_value {
+                best_value = value;
+                if compute_best {
+                    best_hand = Some(hand);
+                }
+            }
+        }
+
+        (best_value, best_hand)
+    }
+}
+
+/// Extract the winning 5 cards hands from cached ranks.
+#[inline]
+fn extract_hand(hand: &[Card], ranks: &[u8; 3]) -> [Card; 5] {
+    // Unpack best hand ranks.
+    let ranks = [
+        ranks[0],
+        (ranks[1] >> 4) & 0xf,
+        ranks[1] & 0xf,
+        (ranks[2] >> 4) & 0xf,
+        ranks[2] & 0xf,
+    ];
+
+    let mut cards = [0u8; 7];
+    for (idx, c) in hand.iter().enumerate() {
+        cards[idx] = c.rank_bits() << 4 | idx as u8;
+    }
+
+    cards.sort();
+
+    let mut result = [Card::new(Rank::Deuce, Suit::Diamonds); 5];
+    let mut rank_idx = 0;
+
+    for c in cards {
+        if (c >> 4) == ranks[rank_idx] {
+            result[rank_idx] = hand[(c & 0xf) as usize];
+            rank_idx += 1;
+            if rank_idx == 5 {
+                break;
+            }
+        }
+    }
+
+    result
+}
+/// Evaluate a six cards hand.
+fn eval_six_cards(cards: &[Card]) -> (HandValue, [Card; 5]) {
+    let mut hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
+    let mut best_value = HandValue::default();
+    let mut best_hand = hand;
+
+    for perm in PERM6 {
+        hand[0] = cards[perm[0]];
+        hand[1] = cards[perm[1]];
+        hand[2] = cards[perm[2]];
+        hand[3] = cards[perm[3]];
+        hand[4] = cards[perm[4]];
+        let value = eval_five_cards(&hand);
+        if value > best_value {
+            best_hand = hand;
+            best_value = value;
+        }
+    }
+
+    (best_value, best_hand)
+}
+
+/// Evaluate a five cards hands.
+///
+/// Hand h1 beats hand h2 if eval(h1) < eval(h2).
+fn eval_five_cards(cards: &[Card]) -> HandValue {
+    fn find_fast(mut u: u32) -> usize {
+        u = u.wrapping_add(0xe91aaa35u32);
+        u ^= u >> 16;
+        u = u.wrapping_add(u << 8);
+        u ^= u >> 4;
+        let b = (u >> 8) & 0x1ff;
+        let a = u.wrapping_add(u << 2) >> 19;
+        (a ^ HASH_ADJUST[b as usize]) as usize
+    }
+
+    assert_eq!(cards.len(), 5);
+
+    let (c1, c2, c3, c4, c5) = (
+        cards[0].id(),
+        cards[1].id(),
+        cards[2].id(),
+        cards[3].id(),
+        cards[4].id(),
+    );
+
+    let q = (c1 | c2 | c3 | c4 | c5) >> 16;
+
+    // This checks for Flushes and Straight Flushes
+    if (c1 & c2 & c3 & c4 & c5) & 0xf000 != 0 {
+        return HandValue(FLUSHES[q as usize]);
+    }
+
+    // This checks for Straights and High Card hands
+    let s = UNIQUE5[q as usize];
+    if s != 0 {
+        return HandValue(s);
+    }
+
+    let q = (c1 & 0xff) * (c2 & 0xff) * (c3 & 0xff) * (c4 & 0xff) * (c5 & 0xff);
+    HandValue(HASH_VALUES[find_fast(q)])
+}
 
 /// Table lookup for all "flush" hands.
 static FLUSHES: [u16; 7937] = [
@@ -1323,47 +1439,6 @@ static PERM6: [[usize; 5]; 6] = [
     [1, 2, 3, 4, 5],
 ];
 
-/// Evaluate a five cards hands.
-///
-/// Hand h1 beats hand h2 if eval(h1) < eval(h2).
-fn eval_five_cards(cards: &[Card]) -> u16 {
-    fn find_fast(mut u: u32) -> usize {
-        u = u.wrapping_add(0xe91aaa35u32);
-        u ^= u >> 16;
-        u = u.wrapping_add(u << 8);
-        u ^= u >> 4;
-        let b = (u >> 8) & 0x1ff;
-        let a = u.wrapping_add(u << 2) >> 19;
-        (a ^ HASH_ADJUST[b as usize]) as usize
-    }
-
-    assert_eq!(cards.len(), 5);
-
-    let (c1, c2, c3, c4, c5) = (
-        cards[0].id(),
-        cards[1].id(),
-        cards[2].id(),
-        cards[3].id(),
-        cards[4].id(),
-    );
-
-    let q = (c1 | c2 | c3 | c4 | c5) >> 16;
-
-    // This checks for Flushes and Straight Flushes
-    if (c1 & c2 & c3 & c4 & c5) & 0xf000 != 0 {
-        return FLUSHES[q as usize];
-    }
-
-    // This checks for Straights and High Card hands
-    let s = UNIQUE5[q as usize];
-    if s != 0 {
-        return s;
-    }
-
-    let q = (c1 & 0xff) * (c2 & 0xff) * (c3 & 0xff) * (c4 & 0xff) * (c5 & 0xff);
-    HASH_VALUES[find_fast(q)]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1446,8 +1521,13 @@ mod tests {
         assert_eq!(h1val, h2val);
     }
 
-    // Marked as ignore as it takes around 16 secs in release mode to evaluate all
-    // possible 7 cards hands (133M hands ~8.3M hands/sec).
+    /// In release mode this takes around 3.7 secs for 133M hands (~36M hands/s) to run it:
+    ///
+    /// ```bash
+    /// cargo t -p freezeout-eval --features=eval --release -- --ignored
+    /// ```
+    ///
+    /// This is test is marked as disable as it takes a long time to run in debug mode.
     #[ignore]
     #[test]
     fn eval_7cards() {
