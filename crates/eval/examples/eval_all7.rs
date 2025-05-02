@@ -1,24 +1,8 @@
 // Copyright (C) 2025 Vince Vasta
 // SPDX-License-Identifier: Apache-2.0
 //
-// Run with:
-//
 // ```bash
 // $ cargo r --release --features=eval --example eval_all7
-// ...
-// Total hands      133784560
-// Elapsed:         3.513s
-// Hands/sec:       38084445
-//
-// High Card:       23294460
-// One  Pair:       58627800
-// Two Pairs:       31433400
-// Three of a Kind: 6461620
-// Staight:         6180020
-// Flush:           4047644
-// Full House:      3473184
-// Four of a Kind:  224848
-// Straight Flush:  41584
 // ```
 
 use std::time::Instant;

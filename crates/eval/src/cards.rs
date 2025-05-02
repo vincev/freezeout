@@ -233,43 +233,74 @@ impl Deck {
         self.cards.retain(|c| c != &card);
     }
 
-    /// Calls a closure for each hand with n cards.
+    /// Calls the `f` closure for each k-cards hand.
+    ///
+    /// Panics if k is not 2 <= k <= 7.
     pub fn for_each<F>(&self, k: usize, mut f: F)
     where
         F: FnMut(&[Card]),
     {
+        assert!(2 <= k && k <= 7, "2 <= k <= 7");
+
         if k > self.cards.len() {
             return;
         }
 
-        // Algorithm L from TAOCP 4a
-        let mut c = vec![0usize; k + 3];
+        let n = self.cards.len();
+        let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); 7];
 
-        for i in 0..k {
-            c[i + 1] = i;
-        }
+        for c1 in 0..n {
+            h[0] = self.cards[c1];
 
-        c[k + 1] = self.cards.len();
+            for c2 in (c1 + 1)..n {
+                h[1] = self.cards[c2];
 
-        let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); k];
-        loop {
-            for i in 0..k {
-                h[i] = self.cards[c[i + 1]];
+                if k == 2 {
+                    f(&h[0..k]);
+                    continue;
+                }
+
+                for c3 in (c2 + 1)..n {
+                    h[2] = self.cards[c3];
+
+                    if k == 3 {
+                        f(&h[0..k]);
+                        continue;
+                    }
+
+                    for c4 in (c3 + 1)..n {
+                        h[3] = self.cards[c4];
+
+                        if k == 4 {
+                            f(&h[0..k]);
+                            continue;
+                        }
+
+                        for c5 in (c4 + 1)..n {
+                            h[4] = self.cards[c5];
+
+                            if k == 5 {
+                                f(&h[0..k]);
+                                continue;
+                            }
+
+                            for c6 in (c5 + 1)..n {
+                                h[5] = self.cards[c6];
+
+                                if k == 6 {
+                                    f(&h[0..k]);
+                                    continue;
+                                }
+
+                                for c7 in (c6 + 1)..n {
+                                    h[6] = self.cards[c7];
+                                    f(&h[0..k]);
+                                }
+                            }
+                        }
+                    }
+                }
             }
-
-            f(&h);
-
-            let mut j = 1;
-            while c[j] + 1 == c[j + 1] {
-                c[j] = j - 1;
-                j = j + 1;
-            }
-
-            if j > k {
-                break;
-            }
-
-            c[j] += 1;
         }
     }
 }

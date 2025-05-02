@@ -15,6 +15,7 @@ An easy to run Poker server with web and native clients.
 - WebSockets encryption over [Noise Protocol][noise-link].
 - Message signatures for players and server identity.
 - Docker image to run the game server and a nginx server for the web client.
+- Fast hand [evaluator](./crates/eval/) (~40M 7-cards hands/s).
 
 ## Installation
 
