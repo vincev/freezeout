@@ -9,7 +9,7 @@
 //!
 //! [kevlink]: http://suffe.cool/poker/evaluator.html
 //! [kevcode]: http://suffe.cool/poker/code/
-use crate::cards::*;
+use crate::deck::*;
 use std::cmp::Ordering;
 
 use super::eval7;

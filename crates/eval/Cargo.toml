@@ -16,5 +16,3 @@ xxhash-rust = { version = "0.8.15", optional = true, features = ["xxh3"] }
 [features]
 eval = ["xxhash-rust"]
 
-[profile.release]
-opt-level = 3

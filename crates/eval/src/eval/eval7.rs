@@ -3,7 +3,7 @@
 
 use xxhash_rust::xxh3::xxh3_64_with_seed;
 
-use crate::cards::Card;
+use crate::deck::Card;
 
 #[rustfmt::skip]
 static HASH_ADJS: [u16; 16384] = [

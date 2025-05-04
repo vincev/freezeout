@@ -6,6 +6,8 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+pub mod parallel;
+
 /// Primes used to encode a card rank.
 const PRIMES: [u32; 13] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 

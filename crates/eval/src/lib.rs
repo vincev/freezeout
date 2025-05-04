@@ -4,7 +4,7 @@
 //! Freezeout Poker hand evaluator.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 
-pub mod cards;
+pub mod deck;
 
 #[cfg(feature = "eval")]
 pub mod eval;

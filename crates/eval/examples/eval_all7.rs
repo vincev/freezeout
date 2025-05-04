@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use freezeout_eval::{cards::*, eval::*};
+use freezeout_eval::{deck::*, eval::*};
 
 #[rustfmt::skip]
 fn main() {
