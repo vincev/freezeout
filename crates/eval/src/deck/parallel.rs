@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Parallel hand iteration.
+use rand::prelude::*;
 use std::thread;
 
 use super::{Card, Deck, Rank, Suit};
@@ -131,14 +132,47 @@ impl Deck {
                 let start = task_id * hands_per_task;
                 let f = &f;
                 s.spawn(move || {
-                    let mut v = vec![Card::new(Rank::Ace, Suit::Diamonds); k];
+                    let mut h = vec![Card::new(Rank::Ace, Suit::Diamonds); k];
                     for_each_ksubset(n, k, start, hands_per_task, |p| {
                         for (idx, &pos) in p.iter().enumerate() {
-                            v[idx] = self.cards[pos];
+                            h[idx] = self.cards[pos];
                         }
 
-                        f(task_id, &v);
+                        f(task_id, &h);
                     });
+                });
+            }
+        });
+    }
+
+    /// Calls the given closure from `num_tasks` parallel tasks generating
+    /// `samples_per_task` samples of size k.
+    pub fn par_sample<F>(&self, num_tasks: usize, samples_per_task: usize, k: usize, f: F)
+    where
+        F: Fn(usize, &[Card]) + Send + Sync,
+    {
+        assert!(2 <= k && k <= 7, "2 <= k <= 7");
+        assert!(num_tasks > 0);
+        assert!(samples_per_task > 0);
+
+        if k > self.cards.len() {
+            return;
+        }
+
+        thread::scope(|s| {
+            for task_id in 0..num_tasks {
+                let f = &f;
+                s.spawn(move || {
+                    let mut h = vec![Card::new(Rank::Ace, Suit::Diamonds); k];
+                    let mut rng = SmallRng::from_os_rng();
+
+                    for _ in 0..samples_per_task {
+                        for (pos, c) in self.cards.choose_multiple(&mut rng, k).enumerate() {
+                            h[pos] = *c;
+                        }
+
+                        f(task_id, &h);
+                    }
                 });
             }
         });

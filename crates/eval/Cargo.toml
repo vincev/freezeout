@@ -15,4 +15,16 @@ xxhash-rust = { version = "0.8.15", optional = true, features = ["xxh3"] }
 
 [features]
 eval = ["xxhash-rust"]
+parallel = ["eval"]
 
+[[example]]
+name = "eval_all7"
+required-features = ["eval"]
+
+[[example]]
+name = "par_eval_all7"
+required-features = ["parallel"]
+
+[[example]]
+name = "chart"
+required-features = ["parallel"]

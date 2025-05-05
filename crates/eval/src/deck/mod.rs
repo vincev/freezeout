@@ -6,6 +6,7 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+#[cfg(feature = "parallel")]
 pub mod parallel;
 
 /// Primes used to encode a card rank.
@@ -86,6 +87,12 @@ impl Card {
     #[inline]
     pub fn suit_bits(&self) -> u8 {
         ((self.0 >> 12) & 0xf) as u8
+    }
+}
+
+impl Default for Card {
+    fn default() -> Self {
+        Card::new(Rank::Ace, Suit::Diamonds)
     }
 }
 
@@ -233,6 +240,23 @@ impl Deck {
     /// Removes a card from the deck.
     pub fn remove(&mut self, card: Card) {
         self.cards.retain(|c| c != &card);
+    }
+
+    /// Calls the given closure n times with a sample of k cards.
+    pub fn sample<F>(&self, n: usize, k: usize, mut f: F)
+    where
+        F: FnMut(&[Card]),
+    {
+        let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); k];
+        let mut rng = SmallRng::from_os_rng();
+
+        for _ in 0..n {
+            for (pos, c) in self.cards.choose_multiple(&mut rng, k).enumerate() {
+                h[pos] = *c;
+            }
+
+            f(&h);
+        }
     }
 
     /// Calls the `f` closure for each k-cards hand.

@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // ```bash
-// $ cargo r --release --features=eval --example par_eval_all7
+// $ cargo r --release --features=parallel --example par_eval_all7
 // ```
-
-use std::{
-    sync::atomic::{AtomicU64, Ordering},
-    time::Instant,
-};
-
-use freezeout_eval::{deck::*, eval::*};
-
+#[cfg(feature = "parallel")]
 fn main() {
+    use std::{
+        sync::atomic::{AtomicU64, Ordering},
+        time::Instant,
+    };
+
+    use freezeout_eval::{deck::*, eval::*};
+
     // Evaluate all 133M hands with 4 parallel tasks.
     const NUM_TASKS: usize = 4;
     const NUM_RANKS: usize = 9;
@@ -60,4 +60,10 @@ fn main() {
     println!("Full House:      {}", agg[HandRank::FullHouse as usize]);
     println!("Four of a Kind:  {}", agg[HandRank::FourOfAKind as usize]);
     println!("Straight Flush:  {}", agg[HandRank::StraightFlush as usize]);
+}
+
+#[cfg(not(feature = "parallel"))]
+fn main() {
+    println!("This example needs the 'parallel' feature, run with:\n");
+    println!("cargo r --release --features=parallel --example par_eval_all7\n");
 }
