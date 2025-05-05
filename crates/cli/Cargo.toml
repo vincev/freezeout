@@ -1,10 +1,11 @@
 [package]
-authors = ["Vince Vasta <vince.vasta@gmail.com>"]
-description = "Freezeout Poker CLI."
-edition = "2024"
-license = "Apache-2.0"
 name = "freezeout-cli"
-version = "0.1.0"
+description = "Freezeout Poker CLI."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }

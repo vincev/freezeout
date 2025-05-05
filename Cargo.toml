@@ -9,6 +9,13 @@ members = [
     "crates/server",
 ]
 
+[workspace.package]
+authors = ["Vince Vasta <vince.vasta@gmail.com>"]
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/vincev/freezeout"
+version = "0.1.1"
+
 [workspace.dependencies]
 ahash = "0.8.11"
 anyhow = "1.0.94"
