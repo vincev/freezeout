@@ -4,6 +4,7 @@
 // ```bash
 // $ cargo r --release --features=parallel --example chart
 // ```
+use clap::{Parser, value_parser};
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     time::Instant,
@@ -35,42 +36,64 @@ impl Counter {
     }
 }
 
-fn run_sim(c1: Card, c2: Card) -> f64 {
+fn run_sim(c1: Card, c2: Card, n_against: usize) -> f64 {
     const NUM_TASKS: usize = 4;
     const SAMPLES_PER_TASK: usize = 25_000;
     const HAND_SIZE: usize = 7;
+    const BOARD_SIZE: usize = 5;
 
     assert_ne!(c1, c2);
+    assert!(n_against > 0 && n_against < 7);
 
     // Create per task counters to avoid contention and boost performance.
     let task_counters = (0..NUM_TASKS)
         .map(|_| Counter::default())
         .collect::<Vec<_>>();
 
+    // Remove cards from the deck so that we don't sample them.
     let mut deck = Deck::default();
     deck.remove(c1);
     deck.remove(c2);
 
-    deck.par_sample(NUM_TASKS, SAMPLES_PER_TASK, HAND_SIZE, |task_id, sample| {
-        // The sample contains the board + plus other player two cards.
-        let mut hand = [Card::default(); HAND_SIZE];
-        hand.copy_from_slice(sample);
+    // Two cards for each opponent player plus the board.
+    let sample_size = n_against * 2 + BOARD_SIZE;
 
-        let other_value = HandValue::eval(&hand);
+    deck.par_sample(
+        NUM_TASKS,
+        SAMPLES_PER_TASK,
+        sample_size,
+        |task_id, sample| {
+            // The sample contains the two cards for each player and the board cards,
+            // copy the board cards to the end of the evaluation array.
+            let mut hand = [Card::default(); HAND_SIZE];
+            let board_start = n_against * 2;
+            hand[2..].copy_from_slice(&sample[board_start..]);
 
-        // Assume first two cards of the sample are the other player cards and replace
-        // them with this player cards.
-        hand[0] = c1;
-        hand[1] = c2;
-        let this_value = HandValue::eval(&hand);
+            // Evaluate hero hand.
+            hand[0] = c1;
+            hand[1] = c2;
+            let hvalue = HandValue::eval(&hand);
 
-        let counter = &task_counters[task_id];
-        if this_value > other_value {
-            counter.inc_win();
-        }
+            // Compare against other players hand.
+            let mut has_lost = false;
+            for player in 0..n_against {
+                hand[0] = sample[player * 2];
+                hand[1] = sample[player * 2 + 1];
+                let ovalue = HandValue::eval(&hand);
+                if ovalue > hvalue {
+                    has_lost = true;
+                    break;
+                }
+            }
 
-        counter.inc_game();
-    });
+            let counter = &task_counters[task_id];
+            if !has_lost {
+                counter.inc_win();
+            }
+
+            counter.inc_game();
+        },
+    );
 
     // Aggregate counters.
     let wins = task_counters.iter().map(|c| c.wins()).sum::<u64>();
@@ -86,7 +109,17 @@ fn separator() {
     println!();
 }
 
+#[derive(Debug, Parser)]
+struct Cli {
+    /// The number of opposing players.
+    #[clap(long, short, default_value_t = 1, value_parser = value_parser!(u8).range(1..=6))]
+    num_players: u8,
+}
+
 fn main() {
+    let cli = Cli::parse();
+    let num_players = cli.num_players as usize;
+
     separator();
 
     let now = Instant::now();
@@ -112,7 +145,7 @@ fn main() {
                 labels.push(format!("{}{}o", c1.rank(), c2.rank()));
             }
 
-            probs.push(run_sim(c1, c2).round());
+            probs.push(run_sim(c1, c2, num_players).round());
         }
 
         print!("|");

@@ -151,7 +151,7 @@ impl Deck {
     where
         F: Fn(usize, &[Card]) + Send + Sync,
     {
-        assert!(2 <= k && k <= 7, "2 <= k <= 7");
+        assert!(k > 1 && k < self.cards.len());
         assert!(num_tasks > 0);
         assert!(samples_per_task > 0);
 

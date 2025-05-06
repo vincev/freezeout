@@ -247,6 +247,8 @@ impl Deck {
     where
         F: FnMut(&[Card]),
     {
+        assert!(k > 1 && k < self.cards.len());
+
         let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); k];
         let mut rng = SmallRng::from_os_rng();
 
