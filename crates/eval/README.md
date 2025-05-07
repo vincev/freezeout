@@ -4,17 +4,27 @@ Poker hand evaluator for 5, 6 and 7 cards hands. This evaluator is a port of the
 [Cactus Kev's][kevlink] poker evaluator with an additional lookup table for
 faster 7 cards evaluation.
 
-On my box I get ~40M 7-cards hands/s with a single thread and around ~115M 7-cards
+On my box I get ~50M 7-cards hands/s with a single thread and around ~140M 7-cards
 hands/s with parallel processing (4 tasks).
+
+If you use this crate enable the following optmizations (see root `Cargo.toml`):
+
+```
+[profile.release]
+opt-level = 3
+lto = "fat"
+```
+
+## Running examples 
 
 To run the [single threaded example](./examples/eval_all7.rs):
 
 ```
-$ cargo r --release --features=eval --example eval_all7
+$ cargo r --release --example eval_all7
 ...
 Total hands      133784560
-Elapsed:         3.195s
-Hands/sec:       41875270
+Elapsed:         2.480s
+Hands/sec:       53950756
 
 High Card:       23294460
 One  Pair:       58627800
@@ -33,8 +43,8 @@ To run the [multi threaded example](./examples/par_eval_all7.rs)::
 $ cargo r --release --features=parallel --example par_eval_all7
 ...
 Total hands      133784560
-Elapsed:         1.151s
-Hands/sec:       116270956
+Elapsed:         0.945s
+Hands/sec:       141543977
 
 High Card:       23294460
 One  Pair:       58627800

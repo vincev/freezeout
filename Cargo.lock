@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-bot"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1196,8 +1196,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "freezeout-cards"
+version = "0.1.2"
+dependencies = [
+ "ahash",
+ "eframe",
+ "image",
+ "rand 0.9.1",
+ "serde",
+]
+
+[[package]]
 name = "freezeout-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -1209,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1219,6 +1230,7 @@ dependencies = [
  "bs58",
  "bytes",
  "ed25519-dalek",
+ "freezeout-cards",
  "freezeout-eval",
  "futures-util",
  "getrandom 0.3.2",
@@ -1231,11 +1243,12 @@ dependencies = [
 
 [[package]]
 name = "freezeout-eval"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "anyhow",
  "clap",
+ "freezeout-cards",
  "rand 0.9.1",
  "serde",
  "xxhash-rust",
@@ -1243,7 +1256,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-gui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1251,9 +1264,9 @@ dependencies = [
  "eframe",
  "env_logger",
  "ewebsock",
+ "freezeout-cards",
  "freezeout-core",
  "getrandom 0.2.16",
- "image",
  "indoc",
  "log",
  "serde",
@@ -1264,7 +1277,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "anyhow",

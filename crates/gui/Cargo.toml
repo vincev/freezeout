@@ -11,20 +11,20 @@ version = { workspace = true }
 ahash = { workspace = true }
 anyhow = { workspace = true }
 ewebsock = "0.8.0"
+freezeout-cards = { path = "../cards", features=["egui"] }
 freezeout-core = { path = "../core" }
-image = { version = "0.25.5", default-features = false, features = ["png"] }
 indoc = "2"
 log = { workspace = true }
 serde = { workspace = true }
 snow = { workspace = true }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-eframe = { version = "0.31.0", default-features = false, features = [
+eframe = { workspace = true, features = [
     "default_fonts", "glow", "persistence"
 ]}
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.31.0", default-features = false, features = [
+eframe = { workspace = true, features = [
     "default_fonts", "glow", "x11", "persistence"
 ]}
 

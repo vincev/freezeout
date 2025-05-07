@@ -10,20 +10,19 @@ version = { workspace = true }
 [dependencies]
 ahash = { workspace = true }
 anyhow = { workspace = true }
+freezeout-cards = { path = "../cards/" }
 rand = { workspace = true }
 serde = { workspace = true }
-xxhash-rust = { version = "0.8.15", optional = true, features = ["xxh3"] }
+xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 
 [dev-dependencies]
 clap = { workspace = true }
 
 [features]
-eval = ["xxhash-rust"]
-parallel = ["eval"]
+parallel = ["freezeout-cards/parallel"]
 
 [[example]]
 name = "eval_all7"
-required-features = ["eval"]
 
 [[example]]
 name = "par_eval_all7"

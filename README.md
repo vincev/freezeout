@@ -16,7 +16,7 @@ An easy to run Poker server with web and native clients.
 - Message signatures for players and server identity.
 - Docker image to run the game server and a nginx server for the web client.
 - Fast hand [evaluator](./crates/eval/).
-
+ 
 ## Installation
 
 To play **Freezeout** poker you need to run a server that accepts connections from

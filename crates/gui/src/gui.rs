@@ -6,12 +6,13 @@ use anyhow::Result;
 use eframe::egui::*;
 use serde::{Deserialize, Serialize};
 
+use freezeout_cards::egui_cards::Textures;
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},
 };
 
-use crate::{ConnectView, Connection, ConnectionEvent, Textures};
+use crate::{ConnectView, Connection, ConnectionEvent};
 
 /// App configuration parameters.
 #[derive(Debug)]

@@ -5,13 +5,14 @@
 use eframe::egui::*;
 use log::error;
 
+use freezeout_cards::egui_cards::Textures;
 use freezeout_core::{
     game_state::{GameState, Player},
     message::{Message, PlayerAction},
     poker::{Chips, PlayerCards},
 };
 
-use crate::{AccountView, App, ConnectView, ConnectionEvent, Textures, View};
+use crate::{AccountView, App, ConnectView, ConnectionEvent, View};
 
 /// Connect view.
 pub struct GameView {

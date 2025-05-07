@@ -1,0 +1,20 @@
+[package]
+name = "freezeout-cards"
+description = "Freezeout Poker egui cards."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+version = { workspace = true }
+
+[dependencies]
+ahash = { workspace = true }
+eframe = { workspace = true, optional = true }
+image = { version = "0.25.5", optional = true, default-features = false, features = ["png"] }
+rand = { workspace = true }
+serde = { workspace = true }
+
+[features]
+parallel = []
+egui = ["eframe", "image"]
+

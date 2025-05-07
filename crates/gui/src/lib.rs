@@ -3,10 +3,6 @@
 
 //! Freezeout Poker GUI client.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
-
-pub mod cards;
-pub use cards::Textures;
-
 pub mod account_view;
 pub use account_view::AccountView;
 
