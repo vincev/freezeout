@@ -9,8 +9,9 @@
 //!
 //! [kevlink]: http://suffe.cool/poker/evaluator.html
 //! [kevcode]: http://suffe.cool/poker/code/
-use crate::deck::*;
 use std::cmp::Ordering;
+
+use freezeout_cards::{Card, Rank, Suit};
 
 use super::eval7;
 
@@ -1441,8 +1442,10 @@ static PERM6: [[usize; 5]; 6] = [
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ahash::AHashMap;
+    use freezeout_cards::Deck;
+
+    use super::*;
 
     #[test]
     fn eval_5cards() {

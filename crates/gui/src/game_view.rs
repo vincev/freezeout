@@ -5,7 +5,7 @@
 use eframe::egui::*;
 use log::error;
 
-use freezeout_cards::egui_cards::Textures;
+use freezeout_cards::egui::Textures;
 use freezeout_core::{
     game_state::{GameState, Player},
     message::{Message, PlayerAction},

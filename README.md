@@ -16,6 +16,7 @@ An easy to run Poker server with web and native clients.
 - Message signatures for players and server identity.
 - Docker image to run the game server and a nginx server for the web client.
 - Fast hand [evaluator](./crates/eval/).
+- A Poker [cards](./crates/cards/) crate with egui cards textures (see [example](./crates/cards/)).
  
 ## Installation
 

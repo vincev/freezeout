@@ -107,7 +107,7 @@ impl State {
             big_blind: Self::START_GAME_BB,
             hand_count: 0,
             players: PlayersState::default(),
-            deck: Deck::new_and_shuffled(&mut rng),
+            deck: Deck::shuffled(&mut rng),
             last_bet: Chips::ZERO,
             min_raise: Chips::ZERO,
             pots: vec![Pot::default()],
@@ -336,7 +336,7 @@ impl State {
         self.min_raise = self.big_blind;
 
         // Create a new deck.
-        self.deck = Deck::new_and_shuffled(&mut self.rng);
+        self.deck = Deck::shuffled(&mut self.rng);
 
         // Clear board.
         self.board.clear();

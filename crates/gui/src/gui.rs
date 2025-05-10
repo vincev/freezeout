@@ -6,7 +6,7 @@ use anyhow::Result;
 use eframe::egui::*;
 use serde::{Deserialize, Serialize};
 
-use freezeout_cards::egui_cards::Textures;
+use freezeout_cards::egui::Textures;
 use freezeout_core::{
     crypto::{PeerId, SigningKey},
     message::{Message, SignedMessage},

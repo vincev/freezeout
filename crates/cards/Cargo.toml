@@ -1,6 +1,6 @@
 [package]
 name = "freezeout-cards"
-description = "Freezeout Poker egui cards."
+description = "Freezeout Poker cards types."
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -17,4 +17,14 @@ serde = { workspace = true }
 [features]
 parallel = []
 egui = ["eframe", "image"]
+
+[dev-dependencies]
+freezeout-eval = { path = "../eval/" }
+
+[target.'cfg(not(target_os = "linux"))'.dev-dependencies]
+eframe = { workspace = true, features = ["default_fonts", "glow"]}
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+eframe = { workspace = true, features = ["default_fonts", "glow", "x11"]}
+
 

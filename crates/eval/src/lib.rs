@@ -4,6 +4,7 @@
 //! Freezeout Poker hand evaluator.
 #![warn(clippy::all, rust_2018_idioms, missing_docs)]
 pub mod eval;
+pub use eval::{HandRank, HandValue};
 
-/// Rexport deck.
-pub use freezeout_cards::deck;
+// Reexport cards types.
+pub use freezeout_cards::{Card, Deck, Rank, Suit};

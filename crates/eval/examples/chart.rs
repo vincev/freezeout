@@ -10,7 +10,7 @@ use std::{
     time::Instant,
 };
 
-use freezeout_eval::{deck::*, eval::*};
+use freezeout_eval::*;
 
 #[derive(Default)]
 struct Counter {

@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops, sync::atomic};
 
-pub use freezeout_cards::deck::{Card, Deck, Rank, Suit};
+pub use freezeout_cards::{Card, Deck, Rank, Suit};
 
 #[cfg(feature = "eval")]
 pub use freezeout_eval::eval::{HandRank, HandValue};

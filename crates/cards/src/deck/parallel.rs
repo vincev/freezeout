@@ -151,7 +151,7 @@ impl Deck {
     where
         F: Fn(usize, &[Card]) + Send + Sync,
     {
-        assert!(k > 1 && k < self.cards.len());
+        assert!(k > 0 && k < self.cards.len());
         assert!(num_tasks > 0);
         assert!(samples_per_task > 0);
 
@@ -181,6 +181,8 @@ impl Deck {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
     use super::*;
 
     #[test]
@@ -238,5 +240,37 @@ mod tests {
         });
 
         assert_eq!(nth, counter);
+    }
+
+    #[test]
+    fn par_for_each() {
+        let counter = AtomicU64::new(0);
+        let tasks = AtomicU64::new(0);
+
+        Deck::default().par_for_each(4, 5, |task_id, hand| {
+            assert_eq!(hand.len(), 5);
+            counter.fetch_add(1, Ordering::Relaxed);
+            tasks.fetch_or(1 << task_id, Ordering::Relaxed);
+        });
+
+        let count = nck(52, 5) as u64;
+        assert_eq!(counter.load(Ordering::Relaxed), count);
+        assert_eq!(tasks.load(Ordering::Relaxed), 0b1111);
+    }
+
+    #[test]
+    fn par_sample() {
+        let counter = AtomicU64::new(0);
+        let tasks = AtomicU64::new(0);
+
+        const NUM_TASKS: usize = 4;
+        Deck::default().par_sample(NUM_TASKS, 10, 7, |task_id, hand| {
+            assert_eq!(hand.len(), 7);
+            counter.fetch_add(1, Ordering::Relaxed);
+            tasks.fetch_or(1 << task_id, Ordering::Relaxed);
+        });
+
+        assert_eq!(counter.load(Ordering::Relaxed), NUM_TASKS as u64 * 10);
+        assert_eq!(tasks.load(Ordering::Relaxed), 0b1111);
     }
 }

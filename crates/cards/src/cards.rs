@@ -6,11 +6,7 @@ use ahash::AHashMap;
 use eframe::egui;
 use std::sync::LazyLock;
 
-<<<<<<<< Updated upstream:crates/cards/src/cards.rs
-use freezeout_eval::deck::{Card, Deck, Rank, Suit};
-========
-use crate::deck::{Card, Deck, Rank, Suit};
->>>>>>>> Stashed changes:crates/cards/src/egui_cards.rs
+use crate::{Card, Deck, Rank, Suit};
 
 /// The clubs.
 const BYTES_2C: &[u8] = include_bytes!("assets/2c.png");

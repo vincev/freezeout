@@ -13,21 +13,6 @@ pub mod parallel;
 const PRIMES: [u32; 13] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
 /// A Poker card.
-///
-/// A card is represented using the encoding in the [Cactus Kev's][kevlink] Poker
-/// hand evaluator with each card having the following format:
-///
-/// ```text
-///   +--------+--------+--------+--------+
-///   |xxxbbbbb|bbbbbbbb|cdhsrrrr|xxpppppp|
-///   +--------+--------+--------+--------+
-///   p = prime number of rank (deuce=2,trey=3,four=5,five=7,...,ace=41)
-///   r = rank of card (deuce=0,trey=1,four=2,five=3,...,ace=12)
-///   cdhs = suit of card
-///   b = bit turned on depending on rank of card
-/// ```
-///
-/// [kevlink]: http://suffe.cool/poker/evaluator.html
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Card(u32);
 
@@ -35,6 +20,18 @@ pub struct Card(u32);
 impl Card {
     /// Create a card given a suit and rank.
     pub fn new(rank: Rank, suit: Suit) -> Card {
+        // A card is represented using the encoding in the Cactus Kev's Poker
+        // hand evaluator with each card having the following format:
+        //
+        //  +--------+--------+--------+--------+
+        //  |xxxbbbbb|bbbbbbbb|cdhsrrrr|xxpppppp|
+        //  +--------+--------+--------+--------+
+        //  p = prime number of rank (deuce=2,trey=3,four=5,five=7,...,ace=41)
+        //  r = rank of card (deuce=0,trey=1,four=2,five=3,...,ace=12)
+        //  cdhs = suit of card
+        //  b = bit turned on depending on rank of card
+        //
+        //  See http://suffe.cool/poker/evaluator.html
         let (rank, suit) = (rank as u32, suit as u32);
         Self(PRIMES[rank as usize] | (rank << 8) | (suit << 12) | (1 << (rank + 16)))
     }
@@ -216,7 +213,7 @@ impl Deck {
     pub const SIZE: usize = 52;
 
     /// Creates a new shuffled deck.
-    pub fn new_and_shuffled<R: Rng>(rng: &mut R) -> Self {
+    pub fn shuffled<R: Rng>(rng: &mut R) -> Self {
         let mut deck = Self::default();
         deck.cards.shuffle(rng);
         deck
@@ -243,11 +240,13 @@ impl Deck {
     }
 
     /// Calls the given closure n times with a sample of k cards.
+    ///
+    /// Panics if k is not in the [1..Self::count()] range.
     pub fn sample<F>(&self, n: usize, k: usize, mut f: F)
     where
         F: FnMut(&[Card]),
     {
-        assert!(k > 1 && k < self.cards.len());
+        assert!(k > 0 && k < self.cards.len());
 
         let mut h = vec![Card::new(Rank::Ace, Suit::Hearts); k];
         let mut rng = SmallRng::from_os_rng();
@@ -263,7 +262,7 @@ impl Deck {
 
     /// Calls the `f` closure for each k-cards hand.
     ///
-    /// Panics if k is not 2 <= k <= 7.
+    /// Panics if k is not in the range 2 <= k <= 7.
     pub fn for_each<F>(&self, k: usize, mut f: F)
     where
         F: FnMut(&[Card]),
@@ -359,7 +358,7 @@ mod tests {
     #[test]
     fn card_encoding() {
         let mut cards = HashSet::default();
-        let mut deck = Deck::new_and_shuffled(&mut rand::rng());
+        let mut deck = Deck::shuffled(&mut rand::rng());
 
         while !deck.is_empty() {
             let card = deck.deal();
@@ -453,5 +452,22 @@ mod tests {
             count += 1;
         });
         assert_eq!(count, 99_884_400);
+    }
+
+    #[test]
+    fn sample() {
+        let mut counter = 0;
+        Deck::default().sample(10, 1, |hand| {
+            assert_eq!(hand.len(), 1);
+            counter += 1;
+        });
+        assert_eq!(counter, 10);
+
+        let mut counter = 0;
+        Deck::default().sample(10, 7, |hand| {
+            assert_eq!(hand.len(), 7);
+            counter += 1;
+        });
+        assert_eq!(counter, 10);
     }
 }

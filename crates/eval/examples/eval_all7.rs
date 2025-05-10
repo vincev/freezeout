@@ -6,7 +6,7 @@
 // ```
 use std::time::Instant;
 
-use freezeout_eval::{deck::*, eval::*};
+use freezeout_eval::*;
 
 fn main() {
     let now = Instant::now();
