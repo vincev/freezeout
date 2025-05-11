@@ -17,7 +17,6 @@
 //!
 //! ```no_run
 //! # use freezeout_cards::{Card, Deck, Rank, Suit};
-//! // Iterate through all 7 cards hands (133M hands).
 //! let mut counter = 0;
 //! Deck::default().for_each(7, |hand| {
 //!     counter += 1;
@@ -29,7 +28,6 @@
 //!
 //! ```
 //! # use freezeout_cards::{Card, Deck, Rank, Suit};
-//! // Iterate through all 7 cards hands (133M hands).
 //! let mut counter = 0;
 //! Deck::default().sample(10, 5, |hand| {
 //!     assert_eq!(hand.len(), 5);
@@ -48,7 +46,6 @@
 //! # fn par_for_each() {
 //! # use std::sync::atomic;
 //! # use freezeout_cards::{Card, Deck, Rank, Suit};
-//! // Iterate through all 7 cards hands (133M hands).
 //! let counter = atomic::AtomicU64::new(0);
 //! Deck::default().par_for_each(4, 7, |task_id, hand| {
 //!     assert_eq!(hand.len(), 7);
@@ -66,7 +63,6 @@
 //! # fn par_sample() {
 //! # use std::sync::atomic;
 //! # use freezeout_cards::{Card, Deck, Rank, Suit};
-//! // Iterate through all 7 cards hands (133M hands).
 //! let counter = atomic::AtomicU64::new(0);
 //! Deck::default().par_sample(4, 10, 7, |task_id, hand| {
 //!     assert_eq!(hand.len(), 7);
@@ -76,8 +72,9 @@
 //! # }
 //! ```
 //!
-//! To **`egui`** feature exports the [Textures](egui::Textures) type to access
-//! the cards images, see the examples code.
+//! The **`egui`** feature enables the [Textures](egui::Textures) type that gives access
+//! to the card images, see the `board.rs` example for a simple egui app that uses this
+//! crate cards to compute hands probabilities.
 #[warn(clippy::all, rust_2018_idioms, missing_docs)]
 mod deck;
 pub use deck::{Card, Deck, Rank, Suit};

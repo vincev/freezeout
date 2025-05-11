@@ -27,4 +27,7 @@ eframe = { workspace = true, features = ["default_fonts", "glow"]}
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 eframe = { workspace = true, features = ["default_fonts", "glow", "x11"]}
 
+[[example]]
+name = "board"
+required-features = ["egui"]
 
