@@ -14,7 +14,7 @@ An easy to run Poker server with web and native clients.
 - Poker bot clients with custom strategy.
 - WebSockets encryption over [Noise Protocol][noise-link].
 - Message signatures for players and server identity.
-- Docker image to run the game server and a nginx server for the web client.
+- [Docker image](./docker/) to run the game server and a nginx server that serves the web client.
 - Fast hand [evaluator](./crates/eval/).
 - A Poker [cards](./crates/cards/) crate with egui cards textures (see [example](./crates/cards/)).
  
@@ -27,7 +27,7 @@ player clients and a client to connect to the server and play games.
 
 Precompiled `freezeout-server` binaries for Linux, Mac, and Windows are available on
 the [release][release-link] page. If you have Docker installed follow [these
-steps](docker#run-the-freezeout-poker-server) to run the server.
+steps](docker#run-the-poker-server) to run the server.
 
 ### Install the client
 
@@ -150,7 +150,11 @@ INFO     🏠 http://[::1]:8080/
 INFO     🏠 http://localhost.:8080/
 ```
 
-then load the UI in a browser using one of the URLs in output.
+then load the UI in a browser using one of the URLs in the output. Note that clients
+running in different browser tabs share the same connection settings so you may have
+to generate a different identity before connecting if you want the client to join the
+same table during testing, you can do this by pressing the generate button in the
+connection dialog.
 
 The [index.html](./crates/gui/index.html) contains the server and port parameters
 under the `server-address` element, these need to be changed for a production
