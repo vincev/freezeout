@@ -105,4 +105,14 @@ $ cargo r --release --features=parallel --example chart
 Elapsed: 0.950s
 ```
 
+To run the egui [board](./examples/board.rs) example:
+
+```bash
+$ cargo r --release --example board
+```
+
+<p align="center">
+  <img alt="Board Example" src="../../media/board.png" height="672" width="600">
+</p>
+
 [kevlink]: http://suffe.cool/poker/evaluator.html

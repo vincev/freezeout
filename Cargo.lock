@@ -1201,7 +1201,6 @@ version = "0.1.2"
 dependencies = [
  "ahash",
  "eframe",
- "freezeout-eval",
  "image",
  "rand 0.9.1",
  "serde",
@@ -1249,6 +1248,7 @@ dependencies = [
  "ahash",
  "anyhow",
  "clap",
+ "eframe",
  "freezeout-cards",
  "rand 0.9.1",
  "serde",
