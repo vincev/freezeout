@@ -19,7 +19,7 @@ parallel = []
 egui = ["eframe", "image"]
 
 [dev-dependencies]
-freezeout-eval = { path = "../eval/" }
+freezeout-eval = { workspace = true }
 
 [target.'cfg(not(target_os = "linux"))'.dev-dependencies]
 eframe = { workspace = true, features = ["default_fonts", "glow"]}

@@ -11,6 +11,6 @@ version = { workspace = true }
 anyhow = { workspace = true }
 clap = { workspace = true }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
-freezeout-core = { path = "../core", features = ["connection"] }
+freezeout-core = { workspace = true, features = ["connection"] }
 futures-util = { version = "0.3.31" }
 tokio = { workspace = true, features=["full"] }

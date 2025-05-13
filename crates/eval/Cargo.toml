@@ -10,7 +10,7 @@ version = { workspace = true }
 [dependencies]
 ahash = { workspace = true }
 anyhow = { workspace = true }
-freezeout-cards = { path = "../cards/" }
+freezeout-cards = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }

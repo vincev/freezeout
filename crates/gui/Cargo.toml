@@ -11,8 +11,8 @@ version = { workspace = true }
 ahash = { workspace = true }
 anyhow = { workspace = true }
 ewebsock = "0.8.0"
-freezeout-cards = { path = "../cards", features=["egui"] }
-freezeout-core = { path = "../core" }
+freezeout-cards = { workspace = true, features=["egui"] }
+freezeout-core = { workspace = true }
 indoc = "2"
 log = { workspace = true }
 serde = { workspace = true }

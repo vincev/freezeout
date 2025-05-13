@@ -10,7 +10,7 @@ version = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 env_logger = { workspace = true }
-freezeout-core = { path = "../core", features = ["connection"] }
+freezeout-core = { workspace = true, features = ["connection"] }
 log = { workspace = true }
 rand = { workspace = true }
 tokio = { workspace = true, features=["full"] }
