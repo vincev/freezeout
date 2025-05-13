@@ -18,16 +18,3 @@ serde = { workspace = true }
 parallel = []
 egui = ["eframe", "image"]
 
-[dev-dependencies]
-freezeout-eval = { workspace = true }
-
-[target.'cfg(not(target_os = "linux"))'.dev-dependencies]
-eframe = { workspace = true, features = ["default_fonts", "glow"]}
-
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-eframe = { workspace = true, features = ["default_fonts", "glow", "x11"]}
-
-[[example]]
-name = "board"
-required-features = ["egui"]
-

@@ -17,6 +17,13 @@ xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 
 [dev-dependencies]
 clap = { workspace = true }
+freezeout-cards = { workspace = true, features = ["egui"] }
+
+[target.'cfg(not(target_os = "linux"))'.dev-dependencies]
+eframe = { workspace = true, features = ["default_fonts", "glow"]}
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+eframe = { workspace = true, features = ["default_fonts", "glow", "x11"]}
 
 [features]
 parallel = ["freezeout-cards/parallel"]
@@ -31,3 +38,6 @@ required-features = ["parallel"]
 [[example]]
 name = "chart"
 required-features = ["parallel"]
+
+[[example]]
+name = "board"
