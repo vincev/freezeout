@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // ```bash
-// $ cargo r --release --features=egui --example board
+// $ cargo r --release --example board
 // ```
 use eframe::egui::{self, pos2, vec2};
 use std::{sync::mpsc, thread};
