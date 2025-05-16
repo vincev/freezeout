@@ -5,9 +5,19 @@ Poker hand evaluator for 5, 6 and 7 cards hands. This evaluator is a port of the
 faster 7 cards evaluation.
 
 On my box I get ~50M 7-cards hands/s with a single thread and around ~140M 7-cards
-hands/s with parallel processing (4 tasks).
+hands/s with parallel processing (see examples below).
 
-If you use this crate enable the following optmizations (see root `Cargo.toml`):
+## Using Freezeout Evaluator
+
+[freezeout-eval is available on crates.io](https://crates.io/crates/freezeout-eval).
+To use it in your project add a dependency to your `Cargo.toml`:
+
+```toml
+[dependencies]
+freezeout-eval = "0.1.2"
+```
+
+for maximum performance you can enable the following optimizations (see root `Cargo.toml`):
 
 ```
 [profile.release]
@@ -37,7 +47,7 @@ Four of a Kind:  224848
 Straight Flush:  41584
 ```
 
-To run the [multi threaded example](./examples/par_eval_all7.rs)::
+To run the [multi threaded example](./examples/par_eval_all7.rs):
 
 ```
 $ cargo r --release --features=parallel --example par_eval_all7
