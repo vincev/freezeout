@@ -3,8 +3,7 @@ resolver = "2"
 members = [
     "crates/bot",
     "crates/cards",
-    "crates/cli",
-    "crates/core", 
+    "crates/core",
     "crates/eval",
     "crates/gui",
     "crates/server",
@@ -33,7 +32,6 @@ tokio = { version = "1.44.0" }
 # Freezeout crates
 freezeout-bot = { version = "0.1.2", path = "crates/bot", default-features = false }
 freezeout-cards = { version = "0.1.2", path = "crates/cards", default-features = false }
-freezeout-cli = { version = "0.1.2", path = "crates/cli", default-features = false }
 freezeout-core = { version = "0.1.2", path = "crates/core", default-features = false }
 freezeout-eval = { version = "0.1.2", path = "crates/eval", default-features = false }
 freezeout-gui = { version = "0.1.2", path = "crates/gui", default-features = false }
