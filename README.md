@@ -8,16 +8,15 @@ An easy to run Poker server with web and native clients.
 
 ## Features
 
-- Multi tables [tokio][tokio-link] server.
+- Multiplayer [tokio][tokio-link] server.
 - [egui][egui-link] web and native client.
-- CLI [crossterm][cterm-link] client.
-- Poker bot clients with custom strategy.
 - WebSockets encryption over [Noise Protocol][noise-link].
 - Message signatures for players and server identity.
-- [Docker image](./docker/) to run the game server and a nginx server that serves the web client.
 - Fast hand [evaluator](./crates/eval/).
 - A Poker [cards](./crates/cards/) crate with egui cards textures (see [example](./crates/cards/)).
- 
+- Poker bot clients with custom strategy.
+- [Docker image](./docker/) to run the game server and a nginx server that serves the web client.
+
 ## Installation
 
 To play **Freezeout** poker you need to run a server that accepts connections from
@@ -129,7 +128,7 @@ chips amount and if a table is available the player joins a table.
 
 When a player joins a table the client shows the game view that contains the table
 and the players seats, each seat shows the player identifier, nickname, chips, cards
-and the player action, a countdown timer shows the active player. 
+and the player action, a countdown timer shows the active player.
 
 The client controls the player at the bottom and it shows action controls when it
 becomes the active player, pressing `?` shows keyboard shortcuts for the various
@@ -160,38 +159,6 @@ The [index.html](./crates/gui/index.html) contains the server and port parameter
 under the `server-address` element, these need to be changed for a production
 deployment, the [web docker image](docker#run-the-web-server) does that
 automatically when you run the container.
-
-## Running the CLI native client
-
-<p align="left">
-  <img alt="Freezeout UI" src="media/cli.gif" height="168" width="600">
-</p>
-
-
-The CLI client is a simple [crossterm][cterm-link] client to quickly interact with
-the server, to run it with `cargo`:
-
-```bash
-$ cargo r -p freezeout-cli -- --help
-...
-Usage: freezeout-cli [OPTIONS] --nickname <NICKNAME>
-
-Options:
-  -n, --nickname <NICKNAME>  This client nickname
-  -h, --host <HOST>          The server listening address [default: 127.0.0.1]
-  -p, --port <PORT>          The server listening port [default: 9871]
-      --help                 Help long flag
-```
-
-When the client player action is requested you can use the following shortcuts:
-
-- `f` fold
-- `c` call or check
-- `b` bet
-- `r` raise
-- `q` for exit
-- Up/Dn for to adjust betting chips
-- Enter to confirm betting action
 
 ## Writing a bot
 
