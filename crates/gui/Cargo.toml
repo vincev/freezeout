@@ -10,8 +10,8 @@ version = { workspace = true }
 [dependencies]
 ahash = { workspace = true }
 anyhow = { workspace = true }
-ewebsock = "0.8.0"
-freezeout-cards = { workspace = true, features=["egui"] }
+ewebsock = { version = "0.8.0", features = ["tls"] }
+freezeout-cards = { workspace = true, features = ["egui"] }
 freezeout-core = { workspace = true }
 indoc = "2"
 log = { workspace = true }
@@ -20,13 +20,18 @@ snow = { workspace = true }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 eframe = { workspace = true, features = [
-    "default_fonts", "glow", "persistence"
-]}
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 eframe = { workspace = true, features = [
-    "default_fonts", "glow", "x11", "persistence"
-]}
+    "default_fonts",
+    "glow",
+    "x11",
+    "persistence",
+] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
@@ -35,4 +40,5 @@ web-sys = "0.3"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap = { workspace = true }
+tokio-rustls = { workspace = true }
 env_logger = { workspace = true }

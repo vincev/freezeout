@@ -1,13 +1,16 @@
 // Copyright (C) 2025  Vince Vasta.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Noise protocol encrypted WebSocket connection types.
+//! TLS and Noise protocol encrypted WebSocket connection types.
 use anyhow::{Result, anyhow, bail};
 use bytes::BytesMut;
 use futures_util::{SinkExt, StreamExt};
 use snow::{TransportState, params::NoiseParams};
 use std::sync::LazyLock;
-use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    net::TcpStream,
+};
 use tokio_tungstenite::{
     self as websocket, MaybeTlsStream, WebSocketStream,
     tungstenite::{Message as WsMessage, protocol::WebSocketConfig},
@@ -21,18 +24,19 @@ static NOISE_PARAMS: LazyLock<NoiseParams> =
 /// Maximum message length.
 const MAX_MSG_LEN: usize = 16384;
 
+/// The client connection type.
+pub type ClientConnection = EncryptedConnection<MaybeTlsStream<TcpStream>>;
+
 /// A noise protocol encrypted WebSocket connection for [SignedMessage].
-pub struct EncryptedConnection {
-    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+pub struct EncryptedConnection<S> {
+    stream: WebSocketStream<S>,
     transport: TransportState,
 }
 
-impl EncryptedConnection {
-    /// Creates a new connection.
-    fn new(stream: WebSocketStream<MaybeTlsStream<TcpStream>>, transport: TransportState) -> Self {
-        Self { stream, transport }
-    }
-
+impl<S> EncryptedConnection<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     /// Sends a [SignedMessage].
     pub async fn send(&mut self, msg: &SignedMessage) -> Result<()> {
         let mut buf = BytesMut::zeroed(MAX_MSG_LEN);
@@ -40,7 +44,6 @@ impl EncryptedConnection {
         self.stream
             .send(WsMessage::binary(buf.freeze().slice(..len)))
             .await?;
-
         Ok(())
     }
 
@@ -71,11 +74,12 @@ impl EncryptedConnection {
 }
 
 /// Creates an [EncryptedConnection] from a server stream.
-pub async fn accept_async(stream: TcpStream) -> Result<EncryptedConnection> {
+pub async fn accept_async<S>(stream: S) -> Result<EncryptedConnection<S>>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MSG_LEN));
-
-    let mut stream =
-        websocket::accept_async_with_config(MaybeTlsStream::Plain(stream), Some(config)).await?;
+    let mut stream = websocket::accept_async_with_config(stream, Some(config)).await?;
 
     // Start Noise protocol handshake with the client.
     let mut noise = snow::Builder::new(NOISE_PARAMS.clone()).build_responder()?;
@@ -103,16 +107,13 @@ pub async fn accept_async(stream: TcpStream) -> Result<EncryptedConnection> {
 
     let transport = noise.into_transport_mode()?;
 
-    Ok(EncryptedConnection::new(stream, transport))
+    Ok(EncryptedConnection { stream, transport })
 }
 
 /// Connects to a server and returns an [EncryptedConnection] if successful.
-pub async fn connect_async(addr: &str) -> Result<EncryptedConnection> {
+pub async fn connect_async(url: &str) -> Result<ClientConnection> {
     let config = WebSocketConfig::default().max_message_size(Some(MAX_MSG_LEN));
-
-    // Connect to server.
-    let url = format!("ws://{}", addr);
-    let (mut stream, _) = websocket::connect_async_with_config(&url, Some(config), false).await?;
+    let (mut stream, _) = websocket::connect_async_with_config(url, Some(config), false).await?;
 
     // Start Noise protocol handshake.
     let mut noise = snow::Builder::new(NOISE_PARAMS.clone()).build_initiator()?;
@@ -140,8 +141,7 @@ pub async fn connect_async(addr: &str) -> Result<EncryptedConnection> {
     };
 
     let transport = noise.into_transport_mode()?;
-
-    Ok(EncryptedConnection::new(stream, transport))
+    Ok(EncryptedConnection { stream, transport })
 }
 
 #[cfg(test)]
@@ -170,7 +170,8 @@ mod tests {
             tx.send(()).unwrap();
         });
 
-        let mut con = connect_async(addr).await.unwrap();
+        let url = format!("ws://{addr}");
+        let mut con = connect_async(&url).await.unwrap();
         let keypair = SigningKey::default();
         let msg = SignedMessage::new(
             &keypair,

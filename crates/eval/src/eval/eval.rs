@@ -11,7 +11,7 @@
 //! [kevcode]: http://suffe.cool/poker/code/
 use std::cmp::Ordering;
 
-use freezeout_cards::{Card, Rank, Suit};
+use freezeout_cards::Card;
 
 use super::eval7;
 
@@ -223,7 +223,7 @@ fn extract_hand(hand: &[Card], ranks: &[u8; 3]) -> [Card; 5] {
 
     cards.sort();
 
-    let mut result = [Card::new(Rank::Deuce, Suit::Diamonds); 5];
+    let mut result = [Card::default(); 5];
     let mut rank_idx = 0;
 
     for c in cards {
@@ -238,6 +238,7 @@ fn extract_hand(hand: &[Card], ranks: &[u8; 3]) -> [Card; 5] {
 
     result
 }
+
 /// Evaluate a six cards hand.
 fn eval_six_cards(cards: &[Card]) -> (HandValue, [Card; 5]) {
     let mut hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
@@ -1443,7 +1444,7 @@ static PERM6: [[usize; 5]; 6] = [
 #[cfg(test)]
 mod tests {
     use ahash::AHashMap;
-    use freezeout_cards::Deck;
+    use freezeout_cards::{Card, Deck, Rank, Suit};
 
     use super::*;
 

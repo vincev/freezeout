@@ -87,7 +87,6 @@ impl Connection {
                         .send(WsMessage::Binary(self.noise_buf[..len].to_vec()));
 
                     self.noise_handshake = Some(noise);
-
                     None
                 }
                 WsEvent::Message(msg) => {
