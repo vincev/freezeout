@@ -22,6 +22,12 @@ struct Cli {
     /// Application data path.
     #[clap(long)]
     data_path: Option<PathBuf>,
+    /// TLS private key PEM path.
+    #[clap(long, requires = "chain_path")]
+    key_path: Option<PathBuf>,
+    /// TLS certificate chain PEM path.
+    #[clap(long, requires = "key_path")]
+    chain_path: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -39,6 +45,8 @@ async fn main() {
         tables: cli.tables as usize,
         seats: cli.seats as usize,
         data_path: cli.data_path,
+        key_path: cli.key_path,
+        chain_path: cli.chain_path,
     };
 
     if let Err(e) = server::run(config).await {

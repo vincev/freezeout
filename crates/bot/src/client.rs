@@ -30,10 +30,8 @@ pub trait Strategy: Send + 'static {
 pub struct Config {
     /// Number of clients to run.
     pub clients: u8,
-    /// The server listening address.
-    pub host: String,
-    /// The server listening port.
-    pub port: u16,
+    /// The server WebSocket url.
+    pub url: String,
 }
 
 static NICKNAMES: &[&str] = &["Alice", "Bob", "Carol", "Dave", "Frank", "Mike"];
@@ -57,8 +55,7 @@ where
         let mut client = Client::new(
             factory(),
             NICKNAMES[idx as usize % NICKNAMES.len()].to_string(),
-            &config.host,
-            config.port,
+            &config.url,
             shutdown_broadcast_tx.subscribe(),
             shutdown_complete_tx.clone(),
         )
@@ -88,7 +85,7 @@ where
 struct Client<S: Strategy> {
     strategy: S,
     nickname: String,
-    conn: connection::EncryptedConnection,
+    conn: connection::ClientConnection,
     sk: SigningKey,
     shutdown_broadcast_rx: broadcast::Receiver<()>,
     _shutdown_complete_tx: mpsc::Sender<()>,
@@ -99,14 +96,12 @@ impl<S: Strategy> Client<S> {
     async fn new(
         strategy: S,
         nickname: String,
-        host: &str,
-        port: u16,
+        url: &str,
         shutdown_broadcast_rx: broadcast::Receiver<()>,
         _shutdown_complete_tx: mpsc::Sender<()>,
     ) -> Result<Self> {
         // Try to connect and join the server.
-        let addr = format!("{host}:{port}");
-        let mut conn = connection::connect_async(&addr).await?;
+        let mut conn = connection::connect_async(url).await?;
 
         let sk = SigningKey::default();
         let msg = SignedMessage::new(

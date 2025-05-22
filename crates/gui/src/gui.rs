@@ -18,7 +18,7 @@ use crate::{ConnectView, Connection, ConnectionEvent};
 #[derive(Debug)]
 pub struct Config {
     /// The server address in 'host:port' format.
-    pub server_address: String,
+    pub server_url: String,
 }
 
 /// Data persisted across sessions.
@@ -63,8 +63,7 @@ impl App {
 
     /// Connects to a server.
     pub fn connect(&mut self, sk: SigningKey, nickname: &str, ctx: &Context) -> Result<()> {
-        let url = format!("ws://{}", self.config.server_address);
-        let con = Connection::connect(&url, ctx.clone())?;
+        let con = Connection::connect(&self.config.server_url, ctx.clone())?;
 
         if let Some(mut c) = self.connection.take() {
             c.close();

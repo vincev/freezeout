@@ -10,12 +10,10 @@ An easy to run Poker server with web and native clients.
 
 - Multiplayer [tokio][tokio-link] server.
 - [egui][egui-link] web and native client.
-- WebSockets encryption over [Noise Protocol][noise-link].
+- TLS and [Noise Protocol][noise-link] WebSocket encryption.
 - Message signatures for players and server identity.
 - Fast hand [evaluator](./crates/eval/).
-- A Poker [cards](./crates/cards/) crate with egui cards textures (see [example](./crates/cards/)).
-- Poker bot clients with custom strategy.
-- [Docker image](./docker/) to run the game server and a nginx server that serves the web client.
+- [Docker image](./docker/) for running nginx and the game server.
 
 ## Installation
 
@@ -49,12 +47,13 @@ $ freezeout-server --help
 Usage: freezeout-server [OPTIONS]
 
 Options:
-  -a, --address <ADDRESS>      The server listening address [default: 127.0.0.1]
-  -p, --port <PORT>            The server listening port [default: 9871]
-      --tables <TABLES>        Number of tables [default: 10]
-      --seats <SEATS>          Number of seats per table [default: 3]
-      --data-path <DATA_PATH>  Application data path
-  -h, --help                   Print help
+  -a, --address <ADDRESS>        The server listening address [default: 127.0.0.1]
+  -p, --port <PORT>              The server listening port [default: 9871]
+      --tables <TABLES>          Number of tables [default: 10]
+      --seats <SEATS>            Number of seats per table [default: 3]
+      --data-path <DATA_PATH>    Application data path
+      --key-path <KEY_PATH>      TLS private key PEM path
+      --chain-path <CHAIN_PATH>  TLS certificate chain PEM path
 ```
 
 The first two options `--address` and `--port` configure the server networking. The
@@ -75,6 +74,11 @@ The `--data-path` option sets the folder path where server data files are stored
 default this is set to the standard applications path. The data folder contains the
 database files for the players and the server signing key that is used to sign
 messages sent to the clients.
+
+The `--key-path` and `--chain-path` options specify the paths to the TLS private key
+and certificate chain. When specifed these enable TLS for secure WebSocket
+connections (`wss://host:port`), if these options are omitted the server uses
+unencrypted WebSocket connections (`ws://host:port`) secured by the Noise Protocol.
 
 ## Running the egui client
 

@@ -19,3 +19,5 @@ parking_lot = { workspace = true }
 rand = { workspace = true }
 rusqlite = { version = "0.33.0", features = ["bundled"] }
 tokio = { workspace = true, features=["full"] }
+tokio-rustls = { workspace = true }
+tokio-tungstenite = { workspace = true }

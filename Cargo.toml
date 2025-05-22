@@ -14,7 +14,7 @@ authors = ["Vince Vasta <vince.vasta@gmail.com>"]
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/vincev/freezeout"
-version = "0.1.2"
+version = "0.2.0"
 
 [workspace.dependencies]
 ahash = "0.8.11"
@@ -27,15 +27,17 @@ parking_lot = "0.12.3"
 rand = "0.9.1"
 serde = { version = "1.0.216", features = ["derive"] }
 snow = "0.9.6"
-tokio = { version = "1.44.0" }
+tokio = "1.44.0"
+tokio-rustls = "0.26.2"
+tokio-tungstenite = "0.26.0"
 
 # Freezeout crates
-freezeout-bot = { version = "0.1.2", path = "crates/bot", default-features = false }
-freezeout-cards = { version = "0.1.2", path = "crates/cards", default-features = false }
-freezeout-core = { version = "0.1.2", path = "crates/core", default-features = false }
-freezeout-eval = { version = "0.1.2", path = "crates/eval", default-features = false }
-freezeout-gui = { version = "0.1.2", path = "crates/gui", default-features = false }
-freezeout-server = { version = "0.1.2", path = "crates/server", default-features = false }
+freezeout-bot = { version = "0.2.0", path = "crates/bot", default-features = false }
+freezeout-cards = { version = "0.2.0", path = "crates/cards", default-features = false }
+freezeout-core = { version = "0.2.0", path = "crates/core", default-features = false }
+freezeout-eval = { version = "0.2.0", path = "crates/eval", default-features = false }
+freezeout-gui = { version = "0.2.0", path = "crates/gui", default-features = false }
+freezeout-server = { version = "0.2.0", path = "crates/server", default-features = false }
 
 [profile.release]
 opt-level = 3

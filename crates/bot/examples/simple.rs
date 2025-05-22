@@ -57,12 +57,9 @@ struct Cli {
     /// Number of clients to run.
     #[clap(long, short, value_parser = clap::value_parser!(u8).range(1..=5))]
     clients: u8,
-    /// The server listening address.
-    #[clap(long, short, default_value = "127.0.0.1")]
-    host: String,
-    /// The server listening port.
-    #[clap(long, short, default_value_t = 9871)]
-    port: u16,
+    /// The server WebSocker url (eg. ws://127.0.0.1:9871).
+    #[clap(long, short, default_value = "ws://127.0.0.1:9871")]
+    url: String,
     /// Help long flag.
     #[clap(long, action = clap::ArgAction::HelpLong)]
     help: Option<bool>,
@@ -74,8 +71,7 @@ async fn main() -> Result<()> {
 
     let config = freezeout_bot::Config {
         clients: cli.clients,
-        host: cli.host,
-        port: cli.port,
+        url: cli.url,
     };
 
     freezeout_bot::run(config, || AlwaysCallOrCheck).await

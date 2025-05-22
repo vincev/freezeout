@@ -9,12 +9,9 @@ fn main() -> eframe::Result<()> {
 
     #[derive(Debug, Parser)]
     struct Cli {
-        /// The server listening address.
-        #[clap(long, short, default_value = "127.0.0.1")]
-        address: String,
-        /// The server listening port.
-        #[clap(long, short, default_value_t = 9871)]
-        port: u16,
+        /// The server WebSocket url.
+        #[clap(long, short, default_value = "ws://127.0.0.1:9871")]
+        url: String,
         /// The configuration storage key.
         #[clap(long, short)]
         storage: Option<String>,
@@ -39,7 +36,7 @@ fn main() -> eframe::Result<()> {
     let cli = Cli::parse();
 
     let config = freezeout_gui::Config {
-        server_address: format!("{}:{}", cli.address, cli.port),
+        server_url: cli.url,
     };
 
     let app_name = cli
@@ -72,12 +69,12 @@ fn main() {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .expect("canvas was not a HtmlCanvasElement");
 
-        let server_address = document
-            .get_element_by_id("server-address")
+        let server_url = document
+            .get_element_by_id("server-url")
             .expect("Failed to find server-address element")
             .inner_html();
 
-        let config = freezeout_gui::Config { server_address };
+        let config = freezeout_gui::Config { server_url };
 
         eframe::WebRunner::new()
             .start(

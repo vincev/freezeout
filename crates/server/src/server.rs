@@ -3,17 +3,26 @@
 
 //! Freezeout Poker server entry point.
 use anyhow::{Result, anyhow, bail};
-use log::{error, info};
+use log::{error, info, warn};
 use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     net::{TcpListener, TcpStream},
     signal,
     sync::{broadcast, mpsc},
     time::{self, Duration},
+};
+use tokio_rustls::{
+    TlsAcceptor,
+    rustls::{
+        ServerConfig as TlsServerConfig,
+        pki_types::{CertificateDer, PrivateKeyDer, pem::PemObject},
+    },
+    server::TlsStream,
 };
 
 use freezeout_core::{
@@ -42,6 +51,10 @@ pub struct Config {
     pub seats: usize,
     /// Application data path.
     pub data_path: Option<PathBuf>,
+    /// TLS private key PEM path.
+    pub key_path: Option<PathBuf>,
+    /// TLS certificate chain PEM path.
+    pub chain_path: Option<PathBuf>,
 }
 
 /// Server entry point.
@@ -52,12 +65,19 @@ pub async fn run(config: Config) -> Result<()> {
         addr, config.tables, config.seats
     );
 
-    let sk = load_signing_key(&config.data_path)?;
-    let db = open_database(&config.data_path)?;
-
     let listener = TcpListener::bind(&addr)
         .await
         .map_err(|e| anyhow!("Tcp listener bind error: {e}"))?;
+
+    let sk = load_signing_key(&config.data_path)?;
+    let db = open_database(&config.data_path)?;
+    let tls = match (config.key_path, config.chain_path) {
+        (Some(key), Some(chain)) => Some(load_tls(&key, &chain)?),
+        _ => {
+            warn!("TLS not enabled, using NOISE encryption");
+            None
+        }
+    };
 
     let shutdown_signal = signal::ctrl_c();
     let (shutdown_broadcast_tx, _) = broadcast::channel(1);
@@ -77,6 +97,7 @@ pub async fn run(config: Config) -> Result<()> {
         sk,
         db,
         listener,
+        tls,
         shutdown_broadcast_tx,
         shutdown_complete_tx,
     };
@@ -107,7 +128,6 @@ pub async fn run(config: Config) -> Result<()> {
 }
 
 /// The server that handles client connection and state.
-#[derive(Debug)]
 struct Server {
     /// The tables on this server.
     tables: TablesPool,
@@ -117,6 +137,8 @@ struct Server {
     db: Db,
     /// The server listener.
     listener: TcpListener,
+    /// The async accetor for TLS connections.
+    tls: Option<TlsAcceptor>,
     /// Shutdown notification channel.
     shutdown_broadcast_tx: broadcast::Sender<()>,
     /// Shutdown sender cloned by each connection.
@@ -127,7 +149,7 @@ impl Server {
     /// Runs the server.
     async fn run(&mut self) -> Result<()> {
         loop {
-            let (socket, addr) = self.accept_with_retry().await?;
+            let (stream, addr) = self.accept_with_retry().await?;
             info!("Accepted connection from {addr}");
 
             let mut handler = Handler {
@@ -139,9 +161,19 @@ impl Server {
                 _shutdown_complete_tx: self.shutdown_complete_tx.clone(),
             };
 
+            let tls_acceptor = self.tls.clone();
             // Spawn a task to handle connection messages.
             tokio::spawn(async move {
-                if let Err(err) = handler.run(socket).await {
+                let res = if let Some(acceptor) = tls_acceptor {
+                    match acceptor.accept(stream).await {
+                        Ok(stream) => handler.run_tls(stream).await,
+                        Err(e) => Err(e.into()),
+                    }
+                } else {
+                    handler.run_tcp(stream).await
+                };
+
+                if let Err(err) = res {
                     error!("Connection to {addr} {err}");
                 }
 
@@ -190,16 +222,27 @@ struct Handler {
 impl Handler {
     const JOIN_TABLE_CHIPS: Chips = Chips::new(1_000_000);
 
-    /// Handle connection messages.
-    async fn run(&mut self, socket: TcpStream) -> Result<()> {
-        let mut conn = connection::accept_async(socket).await?;
+    /// Handle TLS stream.
+    async fn run_tls(&mut self, stream: TlsStream<TcpStream>) -> Result<()> {
+        let mut conn = connection::accept_async(stream).await?;
+        let res = self.handle_connection(&mut conn).await;
+        conn.close().await;
+        res
+    }
+
+    /// Handle unsecured stream.
+    async fn run_tcp(&mut self, stream: TcpStream) -> Result<()> {
+        let mut conn = connection::accept_async(stream).await?;
         let res = self.handle_connection(&mut conn).await;
         conn.close().await;
         res
     }
 
     /// Handle connection messages.
-    async fn handle_connection(&mut self, conn: &mut EncryptedConnection) -> Result<()> {
+    async fn handle_connection<S>(&mut self, conn: &mut EncryptedConnection<S>) -> Result<()>
+    where
+        S: AsyncRead + AsyncWrite + Unpin,
+    {
         // Wait for a JoinServer message from the client to join this server and get
         // the client nickname and player id.
         let msg = tokio::select! {
@@ -415,4 +458,18 @@ fn open_database(path: &Option<PathBuf>) -> Result<Db> {
 
         load_or_create(proj_dirs.config_dir())
     }
+}
+
+fn load_tls(key_path: &PathBuf, chain_path: &PathBuf) -> Result<TlsAcceptor> {
+    let key = PrivateKeyDer::from_pem_file(key_path)?;
+    let chain = CertificateDer::pem_file_iter(chain_path)?.collect::<Result<Vec<_>, _>>()?;
+
+    info!("Loaded TLS chain from {}", chain_path.display());
+    info!("Loaded TLS key   from {}", key_path.display());
+
+    let config = TlsServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(chain, key)?;
+
+    Ok(TlsAcceptor::from(Arc::new(config)))
 }

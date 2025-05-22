@@ -14,6 +14,11 @@ RUN cargo build --release --package freezeout-server
 WORKDIR /app/crates/gui
 RUN trunk build --release
 
+# Generate SSL dev certificates
+COPY ./docker/gen_dev_certs.sh /app/certs/gen_dev_certs.sh
+WORKDIR /app/certs
+RUN ./gen_dev_certs.sh
+
 # Build runtime image
 FROM nginx:latest
 
@@ -22,17 +27,19 @@ RUN apt-get update \
     && apt-get install -y tini \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-
 # Copy the game server application from the builder image.
 COPY --from=builder \
     /app/target/release/freezeout-server \
     /usr/local/bin/freezeout-server
 
 # Copy the wasm client from the builder image.
-COPY --from=builder /app/crates/gui/dist /usr/share/nginx/html
+COPY --from=builder /app/crates/gui/dist /usr/share/nginx/app
 
 # Copy the Nginx configuration file.
 COPY ./docker/nginx.conf /etc/nginx/nginx.conf
+
+# Copy development SSL certificates, replace with a bind mount in prod.
+COPY --from=builder /usr/share/nginx/certs /usr/share/nginx/certs
 
 # Copy the startup script and set permissions.
 COPY ./docker/entrypoint.sh /usr/local/bin/entrypoint.sh
