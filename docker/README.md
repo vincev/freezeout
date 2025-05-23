@@ -6,7 +6,7 @@ To run the web server that serves the WASM client we need to know the WebSocket 
 the client uses to connect to the game server and pass it to the container. Use
 `wss://host:port` if the server is using TLS encryption or `ws://host:port` if the
 server is not using TLS, note that when TLS is disabled communication between client
-and the game server is encrypted using the Noise Protocol.
+and the game server is encrypted using Noise protocol.
 
 For example if the game server is using TLS on port 9871 at `example.com`:
 
