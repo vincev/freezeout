@@ -76,9 +76,9 @@ database files for the players and the server signing key that is used to sign
 messages sent to the clients.
 
 The `--key-path` and `--chain-path` options specify the paths to the TLS private key
-and certificate chain. When specifed these enable TLS for secure WebSocket
-connections (`wss://host:port`), if these options are omitted the server uses
-unencrypted WebSocket connections (`ws://host:port`) secured by the Noise Protocol.
+and certificate chain, respectively. When specified, these enable TLS for
+`wss://host:port` connections; otherwise, the server uses Noise protocol encryption
+for `ws://host:port` connections.
 
 ## Running the egui client
 
@@ -89,14 +89,17 @@ $ freezeout-gui --help
 Usage: freezeout-gui [OPTIONS]
 
 Options:
-  -a, --address <ADDRESS>  The server listening address [default: 127.0.0.1]
-  -p, --port <PORT>        The server listening port [default: 9871]
+  -u, --url <URL>          The server WebSocket url [default: ws://127.0.0.1:9871]
   -s, --storage <STORAGE>  The configuration storage key
   -h, --help               Print help
 ```
 
-The `--address` and `--port` options set the address and port the client connects to,
-the optional `--storage` option sets the key for storing settings data to disk, this
+The `--url` option specifies the protocol, address, and port for the client
+connection. Use `wss://host:port` if the server is configured with TLS (using a
+fullchain certificate and private key); otherwise, use `ws://host:port` for a
+connection encrypted with Noise protocol.
+
+The optional `--storage` option sets the key for storing settings data to disk, this
 is useful to keep client settings separate when running multiple clients, for example
 if you run one client with:
 
@@ -159,10 +162,10 @@ to generate a different identity before connecting if you want the client to joi
 same table during testing, you can do this by pressing the generate button in the
 connection dialog.
 
-The [index.html](./crates/gui/index.html) contains the server and port parameters
-under the `server-address` element, these need to be changed for a production
-deployment, the [web docker image](docker#run-the-web-server) does that
-automatically when you run the container.
+The [index.html](./crates/gui/index.html) contains the server url parameter under the
+`server-url` element that needs to be changed for a production deployment, the [web
+docker image](docker#run-the-web-server) does that automatically when you run the
+container.
 
 ## Writing a bot
 
