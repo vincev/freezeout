@@ -1245,7 +1245,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-bot"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1258,7 +1258,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-cards"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash",
  "eframe",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1293,7 +1293,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-eval"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-gui"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1329,7 +1329,7 @@ dependencies = [
 
 [[package]]
 name = "freezeout-server"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1341,6 +1341,7 @@ dependencies = [
  "parking_lot",
  "rand 0.9.1",
  "rusqlite",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",

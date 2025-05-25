@@ -41,8 +41,10 @@ pub enum Message {
     },
     /// There are no tables left.
     NoTablesLeft,
-    /// The playe doesn't have enough chips to join a game.
+    /// The player doesn't have enough chips to join a game.
     NotEnoughChips,
+    /// The player has already joined a table.
+    PlayerAlreadyJoined,
     /// A player joined the table.
     PlayerJoined {
         /// The player id.

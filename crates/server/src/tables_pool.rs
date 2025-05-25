@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Tables pool.
-use std::sync::Arc;
+use anyhow::Result;
+use log::error;
+use std::{collections::VecDeque, sync::Arc};
+use thiserror::Error;
 use tokio::sync::{Mutex, broadcast, mpsc};
 
 use freezeout_core::{
@@ -12,8 +15,19 @@ use freezeout_core::{
 
 use crate::{
     db::Db,
-    table::{Table, TableMessage},
+    table::{Table, TableJoinError, TableMessage},
 };
+
+/// An error from table join operations.
+#[derive(Error, Debug)]
+pub enum TablesPoolsError {
+    /// All tables are busy.
+    #[error("no tables left")]
+    NoTablesLeft,
+    /// The player has already joined the table.
+    #[error("player already joined")]
+    AlreadyJoined,
+}
 
 /// A pool of tables players can join.
 #[derive(Debug, Clone)]
@@ -21,7 +35,8 @@ pub struct TablesPool(Arc<Mutex<Shared>>);
 
 #[derive(Debug)]
 struct Shared {
-    tables: Vec<Arc<Table>>,
+    avail: VecDeque<Arc<Table>>,
+    full: VecDeque<Arc<Table>>,
 }
 
 impl TablesPool {
@@ -34,7 +49,7 @@ impl TablesPool {
         shutdown_broadcast_tx: &broadcast::Sender<()>,
         shutdown_complete_tx: &mpsc::Sender<()>,
     ) -> Self {
-        let tables = (0..tables)
+        let avail = (0..tables)
             .map(|_| {
                 Arc::new(Table::new(
                     seats,
@@ -46,7 +61,10 @@ impl TablesPool {
             })
             .collect();
 
-        let state = Shared { tables };
+        let state = Shared {
+            avail,
+            full: VecDeque::with_capacity(tables),
+        };
 
         Self(Arc::new(Mutex::new(state)))
     }
@@ -58,30 +76,47 @@ impl TablesPool {
         nickname: &str,
         join_chips: Chips,
         table_tx: mpsc::Sender<TableMessage>,
-    ) -> Option<Arc<Table>> {
+    ) -> Result<Arc<Table>, TablesPoolsError> {
         let mut pool = self.0.lock().await;
 
-        for idx in 0..pool.tables.len() {
-            // Try to join a table, a join may fail if the player is already at the
-            // table or if a game is in progress.
-            let res = pool.tables[idx]
-                .try_join(player_id, nickname, join_chips, table_tx.clone())
-                .await;
-            if res.is_ok() {
-                let table = pool.tables[idx].clone();
-                if table.has_game_started().await {
-                    // After a successful join if the game started move this table at
-                    // the back of the queue so that we look at free tables first.
-                    let table = pool.tables.remove(idx);
-                    pool.tables.push(table);
+        // If there are no available tables try to find them.
+        if pool.avail.is_empty() {
+            for _ in 0..pool.full.len() {
+                if let Some(table) = pool.full.pop_front() {
+                    if table.player_can_join().await {
+                        pool.avail.push_back(table);
+                    } else {
+                        pool.full.push_back(table);
+                    }
                 }
-
-                return Some(table);
             }
         }
 
-        // All tables are busy.
-        None
+        if let Some(table) = pool.avail.front() {
+            let res = table
+                .try_join(player_id, nickname, join_chips, table_tx.clone())
+                .await;
+            match res {
+                Err(TableJoinError::AlreadyJoined) => {
+                    return Err(TablesPoolsError::AlreadyJoined);
+                }
+                Err(_) => {
+                    return Err(TablesPoolsError::NoTablesLeft);
+                }
+                _ => {}
+            };
+
+            // If no other player can join the table move it to the full queue.
+            if !table.player_can_join().await {
+                let table = pool.avail.pop_front().unwrap();
+                pool.full.push_back(table.clone());
+                Ok(table)
+            } else {
+                Ok(table.clone())
+            }
+        } else {
+            Err(TablesPoolsError::NoTablesLeft)
+        }
     }
 }
 
@@ -122,11 +157,27 @@ mod tests {
             self.pool
                 .join(&p.peer_id, "nn", Chips::new(1_000_000), p.tx.clone())
                 .await
+                .ok()
         }
 
-        async fn table_ids(&self) -> Vec<TableId> {
+        async fn avail_ids(&self) -> Vec<TableId> {
             let pool = self.pool.0.lock().await;
-            pool.tables.iter().map(|t| t.table_id()).collect()
+            pool.avail.iter().map(|t| t.table_id()).collect()
+        }
+
+        async fn count_avail(&self) -> usize {
+            let pool = self.pool.0.lock().await;
+            pool.avail.len()
+        }
+
+        async fn full_ids(&self) -> Vec<TableId> {
+            let pool = self.pool.0.lock().await;
+            pool.full.iter().map(|t| t.table_id()).collect()
+        }
+
+        async fn count_full(&self) -> usize {
+            let pool = self.pool.0.lock().await;
+            pool.full.len()
         }
     }
 
@@ -152,7 +203,7 @@ mod tests {
     #[tokio::test]
     async fn test_table_pool() {
         let tp = TestPool::new(2);
-        let tids = tp.table_ids().await;
+        let tids = tp.avail_ids().await;
 
         // Player 1 join table 1 that should be in first position.
         let p1 = TestPlayer::new();
@@ -164,11 +215,12 @@ mod tests {
         let t1 = tp.join(&p2).await.unwrap();
         assert_eq!(t1.table_id(), tids[0]);
 
-        // As the table is full it should move at the back of the queue.
-        let tids = tp.table_ids().await;
-        assert_eq!(t1.table_id(), tids[1]);
+        // As the table is full it should move to the full queue.
+        let tids = tp.full_ids().await;
+        assert_eq!(t1.table_id(), tids[0]);
 
         // Player 1 join table 2, table 2 should be at front of the queue.
+        let tids = tp.avail_ids().await;
         let t2 = tp.join(&p1).await.unwrap();
         assert_eq!(t2.table_id(), tids[0]);
 
@@ -181,18 +233,53 @@ mod tests {
         assert!(tp.join(&p3).await.is_none());
 
         // Players 2 leaves table 1 that becomes ready because with one player left
-        // the game ends (2 seats per table), table 1 should move to the front.
+        // the game ends (2 seats per table), table 1 should move to the available
+        // queue when a play tries to join.
         t1.leave(&p2.peer_id).await;
 
-        let tids = tp.table_ids().await;
-        assert_eq!(t1.table_id(), tids[0]);
-
-        // Player 1 join table 2.
+        // Player 1 join table 2, not the join operation move the tables between
+        // queue.
         let t2 = tp.join(&p1).await.unwrap();
+        let tids = tp.avail_ids().await;
         assert_eq!(t2.table_id(), tids[0]);
 
         // Player 2 join table 2.
         let t2 = tp.join(&p2).await.unwrap();
         assert_eq!(t2.table_id(), tids[0]);
+    }
+
+    #[tokio::test]
+    async fn test_big_pool() {
+        const N: usize = 1_000;
+        let tp = TestPool::new(N);
+
+        // We should be able to join all tables.
+        let mut players = Vec::with_capacity(N * 2);
+        for _ in 0..N * 2 {
+            let p = TestPlayer::new();
+            let t = tp.join(&p).await.unwrap();
+            players.push((p, t));
+        }
+
+        assert_eq!(tp.count_avail().await, 0);
+        assert_eq!(tp.count_full().await, N);
+
+        // Leave all the tables.
+        for (p, t) in players {
+            t.leave(&p.peer_id).await;
+        }
+
+        // One player joins.
+        let p = TestPlayer::new();
+        tp.join(&p).await.unwrap();
+
+        assert_eq!(tp.count_avail().await, N);
+        assert_eq!(tp.count_full().await, 0);
+
+        // Another player joins first table full.
+        let p = TestPlayer::new();
+        tp.join(&p).await.unwrap();
+        assert_eq!(tp.count_avail().await, N - 1);
+        assert_eq!(tp.count_full().await, 1);
     }
 }
