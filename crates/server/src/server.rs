@@ -35,7 +35,7 @@ use freezeout_core::{
 use crate::{
     db::Db,
     table::{Table, TableMessage},
-    tables_pool::TablesPool,
+    tables_pool::{TablesPool, TablesPoolsError},
 };
 
 /// Networking config.
@@ -319,8 +319,7 @@ impl Handler {
                             .pay_from_player(player_id.clone(), Self::JOIN_TABLE_CHIPS)
                             .await?;
                         if has_chips {
-                            // Try to find a table
-                            self.table = self
+                            let res = self
                                 .tables
                                 .join(
                                     &player_id,
@@ -329,16 +328,24 @@ impl Handler {
                                     table_tx.clone(),
                                 )
                                 .await;
+                            match res {
+                                Ok(table) => self.table = Some(table),
+                                Err(e) => {
+                                    // Refund chips and notify client.
+                                    self.db
+                                        .pay_to_player(player_id.clone(), Self::JOIN_TABLE_CHIPS)
+                                        .await?;
 
-                            // If no table has been found refund chips and notify client.
-                            if self.table.is_none() {
-                                self.db
-                                    .pay_to_player(player_id.clone(), Self::JOIN_TABLE_CHIPS)
-                                    .await?;
+                                    let msg = match e {
+                                        TablesPoolsError::NoTablesLeft => Message::NoTablesLeft,
+                                        TablesPoolsError::AlreadyJoined => {
+                                            Message::PlayerAlreadyJoined
+                                        }
+                                    };
 
-                                conn.send(&SignedMessage::new(&self.sk, Message::NoTablesLeft))
-                                    .await?;
-                            }
+                                    conn.send(&SignedMessage::new(&self.sk, msg)).await?;
+                                }
+                            };
                         } else {
                             // If this player doesn't have enough chips to join a
                             // table notify the client.

@@ -21,7 +21,7 @@ use crate::db::Db;
 mod player;
 mod state;
 
-use state::State;
+pub use state::TableJoinError;
 
 /// Table state shared by all players who joined the table.
 #[derive(Debug)]
@@ -54,12 +54,10 @@ enum TableCommand {
         nickname: String,
         join_chips: Chips,
         table_tx: mpsc::Sender<TableMessage>,
-        resp_tx: oneshot::Sender<Result<()>>,
+        resp_tx: oneshot::Sender<Result<(), state::TableJoinError>>,
     },
-    /// Query if the table game has started.
-    HasGameStarted { resp_tx: oneshot::Sender<bool> },
-    /// Query if all players left the table.
-    IsEmpty { resp_tx: oneshot::Sender<bool> },
+    /// Query if a player can join the table.
+    PlayerCanJoin { resp_tx: oneshot::Sender<bool> },
     /// Leave this table.
     Leave(PeerId),
     /// Handle a player message.
@@ -111,48 +109,26 @@ impl Table {
         self.table_id
     }
 
-    /// Checks if this table is waiting for players to join.
-    pub async fn has_game_started(&self) -> bool {
+    /// Checks if a player can join the table.
+    pub async fn player_can_join(&self) -> bool {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         let res = self
             .commands_tx
-            .send(TableCommand::HasGameStarted { resp_tx })
+            .send(TableCommand::PlayerCanJoin { resp_tx })
             .await
             .is_ok();
-        if !res {
-            false
-        } else {
-            resp_rx.await.unwrap_or(false)
-        }
+        res && resp_rx.await.unwrap_or(false)
     }
 
-    /// Checks if this table is waiting for players to join.
-    pub async fn is_empty(&self) -> bool {
-        let (resp_tx, resp_rx) = oneshot::channel();
-
-        let res = self
-            .commands_tx
-            .send(TableCommand::IsEmpty { resp_tx })
-            .await
-            .is_ok();
-        if !res {
-            false
-        } else {
-            resp_rx.await.unwrap_or(false)
-        }
-    }
-
-    /// A player joins this table.
-    ///
-    /// Returns error if the table is full or the player has already joined.
+    /// A player tried to join this table, returns true if the player joined.
     pub async fn try_join(
         &self,
         player_id: &PeerId,
         nickname: &str,
         join_chips: Chips,
         table_tx: mpsc::Sender<TableMessage>,
-    ) -> Result<()> {
+    ) -> Result<(), TableJoinError> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         self.commands_tx
@@ -163,9 +139,10 @@ impl Table {
                 table_tx,
                 resp_tx,
             })
-            .await?;
+            .await
+            .map_err(|_| TableJoinError::Unknown)?;
 
-        resp_rx.await?
+        resp_rx.await.map_err(|_| TableJoinError::Unknown)?
     }
 
     /// A player leaves the table.
@@ -201,7 +178,8 @@ struct TableTask {
 
 impl TableTask {
     async fn run(&mut self) -> Result<()> {
-        let mut state = State::new(self.table_id, self.seats, self.sk.clone(), self.db.clone());
+        let mut state =
+            state::State::new(self.table_id, self.seats, self.sk.clone(), self.db.clone());
         let mut ticks = time::interval(Duration::from_millis(500));
 
         loop {
@@ -217,12 +195,8 @@ impl TableTask {
                         let res = state.try_join(&player_id, &nickname, join_chips, table_tx).await;
                         let _ = resp_tx.send(res);
                     }
-                    Some(TableCommand::HasGameStarted { resp_tx }) => {
-                        let res = state.has_game_started();
-                        let _ = resp_tx.send(res);
-                    }
-                    Some(TableCommand::IsEmpty { resp_tx }) => {
-                        let res = state.is_empty();
+                    Some(TableCommand::PlayerCanJoin { resp_tx }) => {
+                        let res = state.player_can_join();
                         let _ = resp_tx.send(res);
                     }
                     Some(TableCommand::Leave(peer_id)) => {

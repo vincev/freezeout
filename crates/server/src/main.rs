@@ -8,25 +8,25 @@ use std::path::PathBuf;
 #[derive(Debug, Parser)]
 struct Cli {
     /// The server listening address.
-    #[clap(long, short, default_value = "127.0.0.1")]
+    #[arg(long, short, default_value = "127.0.0.1")]
     address: String,
     /// The server listening port.
-    #[clap(long, short, default_value_t = 9871)]
+    #[arg(long, short, default_value_t = 9871)]
     port: u16,
     /// Number of tables.
-    #[clap(long, default_value_t = 10, value_parser = clap::value_parser!(u16).range(1..=100))]
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u16).range(1..1_000))]
     tables: u16,
     /// Number of seats per table.
-    #[clap(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(2..=6))]
+    #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(2..=6))]
     seats: u8,
     /// Application data path.
-    #[clap(long)]
+    #[arg(long)]
     data_path: Option<PathBuf>,
     /// TLS private key PEM path.
-    #[clap(long, requires = "chain_path")]
+    #[arg(long, requires = "chain_path")]
     key_path: Option<PathBuf>,
     /// TLS certificate chain PEM path.
-    #[clap(long, requires = "key_path")]
+    #[arg(long, requires = "key_path")]
     chain_path: Option<PathBuf>,
 }
 

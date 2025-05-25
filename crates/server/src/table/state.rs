@@ -3,13 +3,13 @@
 
 //! Table state types.
 use ahash::AHashSet;
-use anyhow::{Result, bail};
 use log::{error, info};
 use rand::{SeedableRng, rngs::StdRng};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use thiserror::Error;
 use tokio::sync::mpsc;
 
 use freezeout_core::{
@@ -55,6 +55,23 @@ enum HandState {
 struct Pot {
     players: AHashSet<PeerId>,
     chips: Chips,
+}
+
+/// An error from table join operations.
+#[derive(Error, Debug)]
+pub enum TableJoinError {
+    /// The game has already started.
+    #[error("game has started")]
+    GameStarted,
+    /// The table is full.
+    #[error("table full")]
+    TableFull,
+    /// The player has already joined the table.
+    #[error("player already joined")]
+    AlreadyJoined,
+    /// An unknown error used by upper layers.
+    #[error("unknown error")]
+    Unknown,
 }
 
 /// Internal table state.
@@ -117,14 +134,13 @@ impl State {
         }
     }
 
-    /// Returns true if the game at this table has started.
-    pub fn has_game_started(&self) -> bool {
-        !matches!(self.hand_state, HandState::WaitForPlayers)
-    }
-
-    /// Checks if the table has any players left.
-    pub fn is_empty(&self) -> bool {
-        self.players.count() == 0
+    /// Checks if a player can join this table.
+    pub fn player_can_join(&self) -> bool {
+        if !matches!(self.hand_state, HandState::WaitForPlayers) {
+            false
+        } else {
+            self.players.count() < self.seats
+        }
     }
 
     /// A player tries to join the table.
@@ -134,17 +150,17 @@ impl State {
         nickname: &str,
         join_chips: Chips,
         table_tx: mpsc::Sender<TableMessage>,
-    ) -> Result<()> {
-        if !matches!(self.hand_state, HandState::WaitForPlayers) {
-            bail!("Hand in progress");
+    ) -> Result<(), TableJoinError> {
+        if self.players.count() == self.seats {
+            return Err(TableJoinError::TableFull);
         }
 
-        if self.players.count() == self.seats {
-            bail!("Table full");
+        if !matches!(self.hand_state, HandState::WaitForPlayers) {
+            return Err(TableJoinError::GameStarted);
         }
 
         if self.players.iter().any(|p| &p.player_id == player_id) {
-            bail!("Player has already joined");
+            return Err(TableJoinError::AlreadyJoined);
         }
 
         // Add new player to the table.
@@ -906,7 +922,7 @@ mod tests {
                         p.p.table_tx.clone(),
                     )
                     .await
-                    .expect("Player should be able to join");
+                    .expect("Player should join table");
 
                 // After joining a player should get a TableJoined message.
                 assert_message!(p, Message::TableJoined { .. });

@@ -61,6 +61,9 @@ impl View for AccountView {
                         Message::NoTablesLeft => {
                             self.message = "All tables are busy, reconnect later".to_string();
                         }
+                        Message::PlayerAlreadyJoined => {
+                            self.message = "This player has already joined".to_string();
+                        }
                         _ => {}
                     }
 

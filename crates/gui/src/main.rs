@@ -10,10 +10,10 @@ fn main() -> eframe::Result<()> {
     #[derive(Debug, Parser)]
     struct Cli {
         /// The server WebSocket url.
-        #[clap(long, short, default_value = "ws://127.0.0.1:9871")]
+        #[arg(long, short, default_value = "ws://127.0.0.1:9871")]
         url: String,
         /// The configuration storage key.
-        #[clap(long, short)]
+        #[arg(long, short)]
         storage: Option<String>,
     }
 
