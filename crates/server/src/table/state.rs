@@ -93,11 +93,11 @@ pub struct State {
     board: Vec<Card>,
     rng: StdRng,
     new_hand_timer: Option<Instant>,
+    new_hand_timeout: Duration,
 }
 
 impl State {
     const ACTION_TIMEOUT: Duration = Duration::from_secs(15);
-    const NEW_HAND_TIMEOUT: Duration = Duration::from_millis(7500);
     const START_GAME_SB: Chips = Chips::new(10_000);
     const START_GAME_BB: Chips = Chips::new(20_000);
 
@@ -131,6 +131,7 @@ impl State {
             board: Vec::default(),
             rng,
             new_hand_timer: None,
+            new_hand_timeout: Duration::default(),
         }
     }
 
@@ -292,7 +293,7 @@ impl State {
 
         // Check if it is time to start a new hand.
         if let Some(timer) = &self.new_hand_timer {
-            if timer.elapsed() > Self::NEW_HAND_TIMEOUT {
+            if timer.elapsed() > self.new_hand_timeout {
                 self.new_hand_timer = None;
                 self.enter_start_hand().await;
             }
@@ -438,12 +439,21 @@ impl State {
     }
 
     async fn enter_end_hand(&mut self) {
+        self.new_hand_timeout = if matches!(self.hand_state, HandState::Showdown) {
+            // If coming from a showdown give players more time to see the winning
+            // hand and chips.
+            Duration::from_millis(7_000)
+        } else {
+            Duration::from_millis(3_000)
+        };
+
         self.hand_state = HandState::EndHand;
 
         self.update_pots();
         self.broadcast_game_update().await;
+
         // Give time to the UI to look at the updated pot and board.
-        self.broadcast_throttle(Duration::from_millis(1500)).await;
+        self.broadcast_throttle(Duration::from_millis(1_000)).await;
 
         let winners = self.pay_bets();
 
