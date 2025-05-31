@@ -14,7 +14,7 @@ struct Cli {
     #[arg(long, short, default_value_t = 9871)]
     port: u16,
     /// Number of tables.
-    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u16).range(1..1_000))]
+    #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u16).range(1..=1_000))]
     tables: u16,
     /// Number of seats per table.
     #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(2..=6))]

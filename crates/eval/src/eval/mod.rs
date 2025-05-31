@@ -99,7 +99,7 @@ impl HandValue {
         } else if cards.len() == 6 {
             eval_six_cards(cards)
         } else if cards.len() == 5 {
-            let value = eval_five_cards(&cards);
+            let value = eval_five_cards(cards);
             let hand = [cards[0], cards[1], cards[2], cards[3], cards[4]];
             (value, hand)
         } else {
@@ -1458,7 +1458,7 @@ mod tests {
     fn eval_5cards() {
         let mut hands = AHashMap::new();
         Deck::default().for_each(5, |hand| {
-            let val = HandValue::eval(&hand).rank();
+            let val = HandValue::eval(hand).rank();
             *hands.entry(val).or_insert(0) += 1;
         });
 
@@ -1545,7 +1545,7 @@ mod tests {
         let mut hands = AHashMap::new();
 
         Deck::default().for_each(7, |hand| {
-            let val = HandValue::eval(&hand).rank();
+            let val = HandValue::eval(hand).rank();
             *hands.entry(val).or_insert(0u32) += 1;
         });
 
