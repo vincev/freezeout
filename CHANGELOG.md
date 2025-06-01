@@ -1,6 +1,6 @@
 # freezeout changelog
 
-## 0.2.1 - Unreleased
+## 0.2.1 - 2025-06-01
 
 ### 🔧 Changed
 

@@ -14,7 +14,7 @@ To use it in your project add a dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-freezeout-eval = "0.1.2"
+freezeout-eval = "0.2.1"
 ```
 
 for maximum performance you can enable the following optimizations (see root `Cargo.toml`):
@@ -25,7 +25,7 @@ opt-level = 3
 lto = "fat"
 ```
 
-## Running examples 
+## Running examples
 
 To run the [single threaded example](./examples/eval_all7.rs):
 

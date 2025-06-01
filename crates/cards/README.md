@@ -20,21 +20,5 @@ To use it in your project add a dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-freezeout-cards = "0.1.2"
+freezeout-cards = "0.2.1"
 ```
-
-if you need access to parallel iteration and sampling:
-
-```toml
-[dependencies]
-freezeout-cards = { version = "0.1.2", features = ["parallel"] }
-```
-
-if you need access to the egui cards textures:
-
-```toml
-[dependencies]
-freezeout-cards = { version = "0.1.2", features = ["egui"] }
-```
-
-
