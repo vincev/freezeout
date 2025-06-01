@@ -116,7 +116,7 @@ impl HandValue {
             let (v, _) = eval_six_cards(cards);
             v
         } else if cards.len() == 5 {
-            eval_five_cards(&cards)
+            eval_five_cards(cards)
         } else {
             panic!("Hands size not supported {}", cards.len());
         }

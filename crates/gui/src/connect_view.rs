@@ -138,8 +138,8 @@ impl View for ConnectView {
                     // changed by pasting the passphrase or with the generate button.
                     let mut passphrase = self.passphrase.clone();
                     TextEdit::multiline(&mut passphrase)
-                        .char_limit(215)
-                        .desired_rows(5)
+                        .char_limit(108)
+                        .desired_rows(3)
                         .desired_width(400.0)
                         .font(TEXT_FONT)
                         .show(ui);

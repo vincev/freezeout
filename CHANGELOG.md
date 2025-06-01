@@ -4,5 +4,6 @@
 
 ### 🔧 Changed
 
+- Simplify passphrase.
 - Reduce new hand waiting time when all players fold.
 - Improve tables pool.
