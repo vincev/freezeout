@@ -26,19 +26,20 @@ elif [ "$1" = "web" ]; then
     fi
 
     html_folder="/usr/share/nginx/html"
+    app_folder="${html_folder}/freezeout"
     certs_folder="/usr/share/nginx/certs"
 
-    # Create deploy and certificates folder
-    mkdir -p $html_folder $certs_folder
+    # Delete old app folder in case is a local mount point
+    rm -rf $app_folder
 
-    # Delete old folder in case we upgrade
-    rm -rf ${html_folder}/freezeout
+    # Create web folders
+    mkdir -p $html_folder $app_folder $certs_folder
 
-    # Copy the freezeout app folder to nginx html folder 
-    cp -r /usr/share/nginx/app/freezeout $html_folder
+    # Copy the freezeout files to the nginx app folder
+    cp /usr/share/nginx/app/freezeout/* $app_folder
 
     # Set the server url for the Poker clients.
-    sed -i "s|ws://localhost:9871|${2}|g" ${html_folder}/index.html
+    sed -i "s|ws://localhost:9871|${2}|g" ${app_folder}/index.html
 
     echo "Starting nginx server with web clients connecting to ${2}."
     exec nginx -g 'daemon off;'

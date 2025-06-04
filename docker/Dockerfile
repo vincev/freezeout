@@ -12,7 +12,7 @@ RUN cargo build --release --package freezeout-server
 
 # Build the client wasm application.
 WORKDIR /app/crates/gui
-RUN trunk build --release
+RUN trunk build --release --public-url=./
 
 # Generate SSL dev certificates
 COPY ./docker/gen_dev_certs.sh /app/certs/gen_dev_certs.sh
