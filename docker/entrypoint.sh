@@ -31,8 +31,11 @@ elif [ "$1" = "web" ]; then
     # Create deploy and certificates folder
     mkdir -p $html_folder $certs_folder
 
-    # Copy application files to deploy folder in case this is a bind mount
-    cp /usr/share/nginx/app/* $html_folder
+    # Delete old folder in case we upgrade
+    rm -rf ${html_folder}/freezeout
+
+    # Copy the freezeout app folder to nginx html folder 
+    cp -r /usr/share/nginx/app/freezeout $html_folder
 
     # Set the server url for the Poker clients.
     sed -i "s|ws://localhost:9871|${2}|g" ${html_folder}/index.html

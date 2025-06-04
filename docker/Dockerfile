@@ -33,7 +33,7 @@ COPY --from=builder \
     /usr/local/bin/freezeout-server
 
 # Copy the wasm client from the builder image.
-COPY --from=builder /app/crates/gui/dist /usr/share/nginx/app
+COPY --from=builder /app/crates/gui/dist /usr/share/nginx/app/freezeout
 
 # Copy the Nginx configuration file.
 COPY ./docker/nginx.conf /etc/nginx/nginx.conf
